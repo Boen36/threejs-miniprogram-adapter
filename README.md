@@ -1,6 +1,8 @@
-# threejs-miniprogram
+# threejs-miniprogram-adapter
 
 微信小程序 three.js 模块化适配器。支持最新 three.js (0.160.0 - 0.183.1+) 在小程序中运行。
+
+> 注意：此包是新版模块化适配器，与官方已停止维护的 `threejs-miniprogram` 不同。新版无需构建时注入，直接通过 npm 安装使用。
 
 ## 特性
 
@@ -15,7 +17,7 @@
 ## 安装
 
 ```bash
-npm install threejs-miniprogram
+npm install threejs-miniprogram-adapter
 ```
 
 ## 使用
@@ -25,7 +27,7 @@ npm install threejs-miniprogram
 ```javascript
 // page.js
 import * as THREE from 'three';
-import { adaptForMiniProgram } from 'threejs-miniprogram';
+import { adaptForMiniProgram } from 'threejs-miniprogram-adapter';
 
 Page({
   async onReady() {
@@ -72,7 +74,7 @@ Page({
 
 ```javascript
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { adaptForMiniProgram } from 'threejs-miniprogram';
+import { adaptForMiniProgram } from 'threejs-miniprogram-adapter';
 
 Page({
   async onReady() {
@@ -101,7 +103,7 @@ Page({
 
 ```javascript
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LoaderPlugins } from 'threejs-miniprogram';
+import { LoaderPlugins } from 'threejs-miniprogram-adapter';
 
 // 增强 Loader 以支持小程序路径
 LoaderPlugins.enhanceAllLoaders(THREE);
@@ -122,7 +124,7 @@ loader.load(
 ### 从本地文件加载纹理
 
 ```javascript
-import { LoaderPlugins } from 'threejs-miniprogram';
+import { LoaderPlugins } from 'threejs-miniprogram-adapter';
 
 // 使用小程序本地文件路径
 LoaderPlugins.loadTextureFromFile(THREE, 'wxfile://tmp/texture.png', (texture) => {
@@ -175,7 +177,7 @@ LoaderPlugins.loadTextureFromFile(THREE, 'wxfile://tmp/texture.png', (texture) =
 等待 canvas 准备就绪。
 
 ```javascript
-import { waitForCanvas } from 'threejs-miniprogram';
+import { waitForCanvas } from 'threejs-miniprogram-adapter';
 
 const canvas = await waitForCanvas('#webgl');
 ```
@@ -185,7 +187,7 @@ const canvas = await waitForCanvas('#webgl');
 检查环境兼容性。
 
 ```javascript
-import { checkCompatibility } from 'threejs-miniprogram';
+import { checkCompatibility } from 'threejs-miniprogram-adapter';
 
 const report = checkCompatibility();
 console.log(report.compatible); // true/false
@@ -204,7 +206,7 @@ console.log(report.warnings);   // 警告列表
 ## 项目结构
 
 ```
-threejs-miniprogram/
+threejs-miniprogram-adapter/
 ├── src/
 │   ├── index.js                 # 主入口
 │   ├── adaptor/                 # 核心适配层

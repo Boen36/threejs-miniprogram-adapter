@@ -1,5 +1,5 @@
 {
-  "name": "threejs-miniprogram",
+  "name": "threejs-miniprogram-adapter",
   "version": "1.0.0",
   "description": "Modular adapter for using three.js in WeChat Mini Program",
   "main": "src/index.js",
