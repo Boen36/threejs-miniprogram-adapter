@@ -21,14 +21,14 @@
   "author": "",
   "license": "MIT",
   "peerDependencies": {
-    "three": ">=0.160.0"
+    "three": ">=0.160.0 || >=0.183.0"
   },
   "dependencies": {
     "abab": "^2.0.6"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/wechat-miniprogram/threejs-miniprogram.git"
+    "url": "git@github.com:Boen36/threejs-miniprogram-adapter.git"
   },
   "engines": {
     "node": ">=14.0.0"
