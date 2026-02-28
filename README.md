@@ -1,11 +1,11 @@
 # threejs-miniprogram
 
-微信小程序 three.js 模块化适配器。支持最新 three.js (0.160.0+) 在小程序中运行。
+微信小程序 three.js 模块化适配器。支持最新 three.js (0.160.0 - 0.183.1+) 在小程序中运行。
 
 ## 特性
 
 - **模块化架构** - 无需构建时注入 three.js 源码，运行时 polyfill 浏览器环境
-- **支持最新 three.js** - 兼容 three.js 0.160.0+
+- **支持最新 three.js** - 兼容 three.js 0.160.0+，包括最新版本 0.183.1
 - **完整 DOM API 模拟** - 提供 window、document、EventTarget 等核心 API
 - **PointerEvent 支持** - 自动将小程序触摸事件转换为 PointerEvent
 - **WebGL2 支持** - 完整支持小程序 WebGL2 上下文
