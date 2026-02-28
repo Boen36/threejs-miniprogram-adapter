@@ -1,0 +1,36 @@
+{
+  "name": "threejs-miniprogram",
+  "version": "1.0.0",
+  "description": "Modular adapter for using three.js in WeChat Mini Program",
+  "main": "src/index.js",
+  "types": "types/index.d.ts",
+  "files": [
+    "src/",
+    "types/"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "three.js",
+    "wechat",
+    "miniprogram",
+    "webgl",
+    "adapter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "three": ">=0.160.0"
+  },
+  "dependencies": {
+    "abab": "^2.0.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wechat-miniprogram/threejs-miniprogram.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

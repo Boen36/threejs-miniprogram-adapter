@@ -1,0 +1,13 @@
+<!-- 基础渲染示例 WXML -->
+<view class="container">
+  <canvas
+    type="webgl"
+    id="webgl"
+    class="webgl-canvas"
+    style="width: 100vw; height: 100vh;"
+  ></canvas>
+
+  <view class="info" wx:if="{{!isReady}}">
+    <text>正在初始化 WebGL...请稍候</text>
+  </view>
+</view>
