@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram';
+import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
 
 Page({
   data: {
@@ -17,12 +17,12 @@ Page({
       const canvas = await waitForCanvas('#webgl', this);
 
       // 2. 适配 three.js
-      const { canvas: adaptedCanvas, environment, webglReport } = adaptForMiniProgram(canvas, {
+      const adapter = adaptForMiniProgram(canvas, {
         debug: true
       });
+      const { canvas: adaptedCanvas, environment } = adapter;
 
       console.log('环境信息:', environment);
-      console.log('WebGL 报告:', webglReport);
 
       // 3. 创建场景
       const scene = new THREE.Scene();
@@ -45,6 +45,7 @@ Page({
       });
       renderer.setSize(canvas.width, canvas.height);
       renderer.setPixelRatio(environment.supportWebGL2 ? 2 : 1);
+      console.log('WebGL 报告:', adapter.inspectWebGL());
 
       // 6. 创建立方体
       const geometry = new THREE.BoxGeometry(2, 2, 2);
@@ -66,7 +67,7 @@ Page({
 
       // 8. 动画循环
       const animate = () => {
-        canvas.requestAnimationFrame(animate);
+        this._animationFrame = canvas.requestAnimationFrame(animate);
 
         // 旋转立方体
         cube.rotation.x += 0.01;
@@ -83,6 +84,8 @@ Page({
       this._renderer = renderer;
       this._scene = scene;
       this._camera = camera;
+      this._adapter = adapter;
+      this._nativeCanvas = canvas;
 
     } catch (error) {
       console.error('初始化失败:', error);
@@ -95,9 +98,13 @@ Page({
   },
 
   onUnload() {
+    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
+      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
+    }
     // 清理资源
     if (this._renderer) {
       this._renderer.dispose();
     }
+    this._adapter?.dispose();
   }
 });

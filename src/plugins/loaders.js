@@ -3,6 +3,12 @@
  * 为 three.js 的各种 Loader 提供小程序环境适配
  */
 
+import { document } from '../adaptor/dom/document.js';
+
+function createImageElement() {
+  return document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+}
+
 /**
  * 创建适配小程序的文件加载函数
  * 用于替换 Loader 的加载方法
@@ -95,7 +101,7 @@ function enhanceTextureLoader(THREE) {
     const resolvedUrl = resolvePath(url);
 
     // 创建小程序图片
-    const image = new Image();
+    const image = createImageElement();
     image.crossOrigin = 'anonymous';
 
     const texture = new THREE.Texture();
@@ -264,7 +270,7 @@ function loadTextureFromBase64(THREE, base64Data, onLoad, onError) {
     return null;
   }
 
-  const image = new Image();
+  const image = createImageElement();
   image.crossOrigin = 'anonymous';
 
   const texture = new THREE.Texture();
@@ -295,7 +301,7 @@ function loadTextureFromFile(THREE, filePath, onLoad, onError) {
     return null;
   }
 
-  const image = new Image();
+  const image = createImageElement();
   image.crossOrigin = 'anonymous';
 
   const texture = new THREE.Texture();

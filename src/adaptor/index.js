@@ -30,69 +30,89 @@ const defaultConfig = {
   debug: false
 };
 
+function setDefault(target, key, value) {
+  if (target[key] !== undefined && target[key] !== null) return target[key];
+  try {
+    target[key] = value;
+  } catch (error) {
+    // Some runtimes expose non-writable host globals. Keeping the native value is safer.
+  }
+  return target[key];
+}
+
 /**
  * 安装所有 polyfills
  * @param {Object} globalObject - 全局对象（global 或 window）
  * @param {Object} config - 配置选项
  */
-function installPolyfills(globalObject = global, config = {}) {
+function installPolyfills(globalObject = globalThis, config = {}) {
   const options = { ...defaultConfig, ...config };
 
   if (options.debug) {
-    console.log('[threejs-miniprogram] Installing polyfills...');
+    console.log('[threejs-miniprogram-adapter] Installing polyfills...');
   }
 
   // DOM 对象
-  globalObject.window = globalObject.window || new Window();
-  globalObject.document = globalObject.document || document;
-  globalObject.Document = Document;
-  globalObject.Element = Element;
-  globalObject.HTMLElement = HTMLElement;
-  globalObject.HTMLCanvasElement = HTMLCanvasElement;
-  globalObject.HTMLImageElement = HTMLImageElement;
-  globalObject.HTMLVideoElement = HTMLVideoElement;
-  globalObject.Image = Image;
-  globalObject.CSSStyleDeclaration = CSSStyleDeclaration;
-  globalObject.DOMTokenList = DOMTokenList;
+  const windowObject = setDefault(globalObject, 'window', new Window());
+  const documentObject = setDefault(globalObject, 'document', document);
+  setDefault(globalObject, 'Document', Document);
+  setDefault(globalObject, 'Element', Element);
+  setDefault(globalObject, 'HTMLElement', HTMLElement);
+  setDefault(globalObject, 'HTMLCanvasElement', HTMLCanvasElement);
+  setDefault(globalObject, 'HTMLImageElement', HTMLImageElement);
+  setDefault(globalObject, 'HTMLVideoElement', HTMLVideoElement);
+  setDefault(globalObject, 'Image', Image);
+  setDefault(globalObject, 'CSSStyleDeclaration', CSSStyleDeclaration);
+  setDefault(globalObject, 'DOMTokenList', DOMTokenList);
 
   // Event 对象
-  globalObject.EventTarget = EventTarget;
-  globalObject.Event = Event;
-  globalObject.UIEvent = UIEvent;
-  globalObject.MouseEvent = MouseEvent;
-  globalObject.Touch = Touch;
-  globalObject.TouchList = TouchList;
-  globalObject.TouchEvent = TouchEvent;
-  globalObject.KeyboardEvent = KeyboardEvent;
-  globalObject.WheelEvent = WheelEvent;
-  globalObject.PointerEvent = PointerEvent;
+  setDefault(globalObject, 'EventTarget', EventTarget);
+  setDefault(globalObject, 'Event', Event);
+  setDefault(globalObject, 'UIEvent', UIEvent);
+  setDefault(globalObject, 'MouseEvent', MouseEvent);
+  setDefault(globalObject, 'Touch', Touch);
+  setDefault(globalObject, 'TouchList', TouchList);
+  setDefault(globalObject, 'TouchEvent', TouchEvent);
+  setDefault(globalObject, 'KeyboardEvent', KeyboardEvent);
+  setDefault(globalObject, 'WheelEvent', WheelEvent);
+  setDefault(globalObject, 'PointerEvent', PointerEvent);
 
   // Network 对象
-  globalObject.fetch = globalObject.fetch || fetch;
-  globalObject.Request = Request;
-  globalObject.Response = Response;
-  globalObject.Headers = Headers;
-  globalObject.XMLHttpRequest = XMLHttpRequest;
-  globalObject.FormData = FormData;
-  globalObject.Blob = Blob;
-  globalObject.File = File;
-  globalObject.FileReader = FileReader;
+  setDefault(globalObject, 'fetch', fetch);
+  setDefault(globalObject, 'Request', Request);
+  setDefault(globalObject, 'Response', Response);
+  setDefault(globalObject, 'Headers', Headers);
+  setDefault(globalObject, 'XMLHttpRequest', XMLHttpRequest);
+  setDefault(globalObject, 'FormData', FormData);
+  setDefault(globalObject, 'Blob', Blob);
+  setDefault(globalObject, 'File', File);
+  setDefault(globalObject, 'FileReader', FileReader);
 
   // URL 对象
-  globalObject.URL = URLClass;
-  globalObject.URLSearchParams = URLSearchParams;
+  setDefault(globalObject, 'URL', URLClass);
+  setDefault(globalObject, 'URLSearchParams', URLSearchParams);
 
   // Audio
-  globalObject.AudioContext = AudioContext;
-  globalObject.Audio = Audio;
-  globalObject.HTMLAudioElement = HTMLAudioElement;
+  setDefault(globalObject, 'AudioContext', AudioContext);
+  setDefault(globalObject, 'Audio', Audio);
+  setDefault(globalObject, 'HTMLAudioElement', HTMLAudioElement);
 
   // WebGL
-  globalObject.WebGL2RenderingContext = WebGL2RenderingContextWrapper;
+  setDefault(globalObject, 'WebGL2RenderingContext', WebGL2RenderingContextWrapper);
+
+  setDefault(windowObject, 'document', documentObject);
+  setDefault(windowObject, 'window', windowObject);
+  setDefault(windowObject, 'self', windowObject);
+  setDefault(globalObject, 'self', windowObject);
+  setDefault(globalObject, 'location', windowObject.location);
+  setDefault(globalObject, 'navigator', windowObject.navigator);
+  setDefault(globalObject, 'performance', windowObject.performance);
+  setDefault(globalObject, 'requestAnimationFrame', windowObject.requestAnimationFrame.bind(windowObject));
+  setDefault(globalObject, 'cancelAnimationFrame', windowObject.cancelAnimationFrame.bind(windowObject));
 
   // 工具函数
-  globalObject.btoa = globalObject.btoa || btoa;
-  globalObject.atob = globalObject.atob || function(str) {
+  setDefault(globalObject, 'btoa', btoa);
+  setDefault(globalObject, 'atob', function(str) {
     // 简化实现
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
     let output = '';
@@ -110,10 +130,10 @@ function installPolyfills(globalObject = global, config = {}) {
       if (enc4 !== 64) output += String.fromCharCode(chr3);
     }
     return output;
-  };
+  });
 
   if (options.debug) {
-    console.log('[threejs-miniprogram] Polyfills installed successfully');
+    console.log('[threejs-miniprogram-adapter] Polyfills installed successfully');
   }
 }
 
@@ -154,21 +174,40 @@ function createAdaptedCanvas(miniProgramCanvas, options = {}) {
 function getVersion() {
   return {
     version: '1.0.0',
-    name: 'threejs-miniprogram',
+    name: 'threejs-miniprogram-adapter',
     description: 'Modular adapter for using three.js in WeChat Mini Program'
   };
+}
+
+function isVersionAtLeast(version, minimum) {
+  const left = String(version || '').split('.').map(value => Number.parseInt(value, 10) || 0);
+  const right = String(minimum || '').split('.').map(value => Number.parseInt(value, 10) || 0);
+  const length = Math.max(left.length, right.length);
+
+  for (let index = 0; index < length; index++) {
+    if ((left[index] || 0) > (right[index] || 0)) return true;
+    if ((left[index] || 0) < (right[index] || 0)) return false;
+  }
+  return true;
 }
 
 /**
  * 检测运行环境
  */
 function detectEnvironment() {
+  let info = null;
+  if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
+    try {
+      info = wx.getSystemInfoSync();
+    } catch (error) {
+      info = null;
+    }
+  }
+
   return {
     isMiniProgram: typeof wx !== 'undefined',
-    platform: typeof wx !== 'undefined' && wx.getSystemInfoSync ?
-      wx.getSystemInfoSync().platform : 'unknown',
-    supportWebGL2: typeof wx !== 'undefined' && wx.getSystemInfoSync ?
-      (wx.getSystemInfoSync().SDKVersion >= '2.9.0') : false
+    platform: info?.platform || 'unknown',
+    supportWebGL2: Boolean(info?.SDKVersion && isVersionAtLeast(info.SDKVersion, '2.9.0'))
   };
 }
 

@@ -3,6 +3,8 @@
  * 实现标准的 Blob、File 和 FileReader 接口
  */
 
+import { EventTarget } from '../events/event-target.js';
+
 // Blob 类
 class Blob {
   constructor(blobParts = [], options = {}) {
@@ -63,7 +65,7 @@ class Blob {
       const partStart = Math.max(0, start - currentOffset);
       const partEnd = Math.min(partSize, end - currentOffset);
 
-      if (part instanceof Uint8Array) {
+      if (part instanceof Uint8Array || part instanceof Int8Array) {
         slicedParts.push(part.slice(partStart, partEnd));
       } else if (part instanceof Blob) {
         slicedParts.push(part.slice(partStart, partEnd));
@@ -77,6 +79,10 @@ class Blob {
 
   // 转换为 ArrayBuffer
   async arrayBuffer() {
+    return this._toUint8ArraySync().buffer;
+  }
+
+  _toUint8ArraySync() {
     const buffer = new Uint8Array(this._size);
     let offset = 0;
 
@@ -85,13 +91,13 @@ class Blob {
         buffer.set(part, offset);
         offset += part.length;
       } else if (part instanceof Blob) {
-        const partBuffer = await part.arrayBuffer();
-        buffer.set(new Uint8Array(partBuffer), offset);
-        offset += partBuffer.byteLength;
+        const partBytes = part._toUint8ArraySync();
+        buffer.set(partBytes, offset);
+        offset += partBytes.byteLength;
       }
     }
 
-    return buffer.buffer;
+    return buffer;
   }
 
   // 转换为文本

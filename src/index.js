@@ -1,5 +1,5 @@
 /**
- * threejs-miniprogram 主入口
+ * threejs-miniprogram-adapter 主入口
  * 提供适配 three.js 运行环境的核心功能
  */
 
@@ -15,9 +15,33 @@ import {
   WebGLExtensions,
   checkMiniProgramLimitations
 } from './adaptor/index.js';
+import * as LoaderPlugins from './plugins/loaders.js';
+import * as ControlPlugins from './plugins/controls.js';
 
 // 版本信息
 const VERSION = '1.0.0';
+
+function getGlobalObject() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof global !== 'undefined') return global;
+  if (typeof window !== 'undefined') return window;
+  return {};
+}
+
+function compareVersions(left, right) {
+  const normalize = (version) => String(version || '')
+    .split('.')
+    .map(part => Number.parseInt(part, 10) || 0);
+  const a = normalize(left);
+  const b = normalize(right);
+  const length = Math.max(a.length, b.length);
+
+  for (let index = 0; index < length; index++) {
+    const difference = (a[index] || 0) - (b[index] || 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
 
 /**
  * 为小程序适配 three.js
@@ -29,7 +53,7 @@ const VERSION = '1.0.0';
  *
  * @example
  * import * as THREE from 'three';
- * import { adaptForMiniProgram } from 'threejs-miniprogram';
+ * import { adaptForMiniProgram } from 'threejs-miniprogram-adapter';
  *
  * Page({
  *   async onReady() {
@@ -47,7 +71,7 @@ const VERSION = '1.0.0';
  */
 function adaptForMiniProgram(canvas, options = {}) {
   if (!canvas) {
-    throw new Error('[threejs-miniprogram] Canvas is required. Please pass the mini-program canvas instance.');
+    throw new Error('[threejs-miniprogram-adapter] Canvas is required. Please pass the mini-program canvas instance.');
   }
 
   // 默认选项
@@ -58,16 +82,18 @@ function adaptForMiniProgram(canvas, options = {}) {
     canvasWidth: null,
     canvasHeight: null,
     pixelRatio: null,
+    checkWebGLCapabilities: false,
+    webglContextAttributes: undefined,
     ...options
   };
 
   if (config.debug) {
-    console.log('[threejs-miniprogram] Initializing adapter...');
+    console.log('[threejs-miniprogram-adapter] Initializing adapter...');
   }
 
   // 1. 注入全局 polyfills
   if (config.injectGlobals) {
-    installPolyfills(global, { debug: config.debug });
+    installPolyfills(config.globalObject || getGlobalObject(), { debug: config.debug });
   }
 
   // 2. 创建适配的 canvas
@@ -90,27 +116,33 @@ function adaptForMiniProgram(canvas, options = {}) {
   // 4. 检测环境
   const env = detectEnvironment();
 
-  // 5. 检查 WebGL 能力
-  let webglReport = null;
-  try {
-    const gl = adaptedCanvas.getContext('webgl2');
-    if (gl) {
-      const extensions = new WebGLExtensions(gl);
-      webglReport = extensions.getReport();
+  // 5. WebGL capability inspection is opt-in. Creating a context here would
+  // lock its attributes before THREE.WebGLRenderer receives its own options.
+  const inspectWebGL = () => {
+    try {
+      const gl = adaptedCanvas.getContext('webgl2', config.webglContextAttributes);
+      if (gl) {
+        const extensions = new WebGLExtensions(gl);
+        const report = extensions.getReport();
 
-      if (config.debug) {
-        extensions.printReport();
+        if (config.debug) {
+          extensions.printReport();
+          const limitations = checkMiniProgramLimitations(gl);
+          if (limitations.length > 0) {
+            console.warn('[threejs-miniprogram-adapter] Limitations:', limitations);
+          }
+        }
+
+        return report;
       }
-
-      // 检查小程序特定限制
-      const limitations = checkMiniProgramLimitations(gl);
-      if (limitations.length > 0 && config.debug) {
-        console.warn('[threejs-miniprogram] Limitations:', limitations);
+    } catch (error) {
+      if (config.debug) {
+        console.warn('[threejs-miniprogram-adapter] Failed to check WebGL capabilities:', error);
       }
     }
-  } catch (e) {
-    console.error('[threejs-miniprogram] Failed to check WebGL capabilities:', e);
-  }
+    return null;
+  };
+  let webglReport = config.checkWebGLCapabilities ? inspectWebGL() : null;
 
   // 6. 创建响应式尺寸更新（如果需要）
   const updateSize = () => {
@@ -129,7 +161,7 @@ function adaptForMiniProgram(canvas, options = {}) {
   };
 
   if (config.debug) {
-    console.log('[threejs-miniprogram] Adapter initialized successfully');
+    console.log('[threejs-miniprogram-adapter] Adapter initialized successfully');
   }
 
   // 返回适配后的对象
@@ -147,7 +179,15 @@ function adaptForMiniProgram(canvas, options = {}) {
     environment: env,
 
     // WebGL 报告
-    webglReport: webglReport,
+    get webglReport() {
+      return webglReport;
+    },
+
+    // Inspect after creating WebGLRenderer to preserve renderer context options.
+    inspectWebGL: () => {
+      webglReport = inspectWebGL();
+      return webglReport;
+    },
 
     // 工具方法
     updateSize: updateSize,
@@ -161,7 +201,7 @@ function adaptForMiniProgram(canvas, options = {}) {
     // 销毁方法
     dispose: () => {
       unbindTouchEvents(adaptedCanvas);
-      document.setCanvas(null);
+      document.removeCanvas(adaptedCanvas);
     }
   };
 }
@@ -203,23 +243,29 @@ function checkCompatibility() {
     report.issues.push('wx object not available');
   } else {
     if (!wx.createSelectorQuery) {
+      report.compatible = false;
       report.issues.push('wx.createSelectorQuery not available');
     }
     if (!wx.getSystemInfoSync) {
+      report.compatible = false;
       report.issues.push('wx.getSystemInfoSync not available');
     }
   }
 
   // 检查基础库版本
   if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
-    const info = wx.getSystemInfoSync();
-    report.info.SDKVersion = info.SDKVersion;
-    report.info.platform = info.platform;
-    report.info.version = info.version;
+    try {
+      const info = wx.getSystemInfoSync();
+      report.info.SDKVersion = info.SDKVersion;
+      report.info.platform = info.platform;
+      report.info.version = info.version;
 
-    // 检查 WebGL2 支持
-    if (info.SDKVersion < '2.9.0') {
-      report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.9.0+`);
+      if (compareVersions(info.SDKVersion, '2.9.0') < 0) {
+        report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.9.0+`);
+      }
+    } catch (error) {
+      report.compatible = false;
+      report.issues.push(`wx.getSystemInfoSync failed: ${error.message || error}`);
     }
   }
 
@@ -268,7 +314,9 @@ export {
   getVersion,
   detectEnvironment,
   WebGLExtensions,
-  checkMiniProgramLimitations
+  checkMiniProgramLimitations,
+  LoaderPlugins,
+  ControlPlugins
 };
 
 // 默认导出
@@ -277,5 +325,7 @@ export default {
   quickAdapt,
   checkCompatibility,
   waitForCanvas,
-  VERSION
+  VERSION,
+  LoaderPlugins,
+  ControlPlugins
 };

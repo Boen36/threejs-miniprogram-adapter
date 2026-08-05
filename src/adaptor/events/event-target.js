@@ -79,45 +79,26 @@ class EventTarget {
       throw new Error('Event type is required');
     }
 
-    // 设置 target
-    event.target = this;
+    // Preserve the original target when forwarding an event to ownerDocument.
+    if (!event.target) event.target = this;
     event.currentTarget = this;
 
-    const listeners = this._listeners.get(event.type) || [];
-
-    // 分离捕获和冒泡阶段的监听器
-    const captureListeners = listeners.filter(l => l.capture);
-    const bubbleListeners = listeners.filter(l => !l.capture);
-
-    // 模拟捕获阶段（从外到内）
-    event.eventPhase = 1; // CAPTURING_PHASE
-    for (const listener of captureListeners) {
-      if (event._stopped) break;
+    const listeners = [...(this._listeners.get(event.type) || [])];
+    event.eventPhase = 2; // AT_TARGET
+    for (const listener of listeners) {
+      if (event._stopImmediatePropagation) break;
       this._invokeListener(listener, event);
     }
 
-    // 目标阶段
-    if (!event._stopped) {
-      event.eventPhase = 2; // AT_TARGET
-      for (const listener of listeners) {
-        if (event._stopped) break;
-        this._invokeListener(listener, event);
-      }
-    }
-
-    // 模拟冒泡阶段（从内到外）
-    if (!event._stopped && event.bubbles !== false) {
-      event.eventPhase = 3; // BUBBLING_PHASE
-      // 小程序没有 DOM 树，不执行冒泡
-    }
-
     event.eventPhase = 0; // NONE
+    event.currentTarget = null;
 
     return !event.defaultPrevented;
   }
 
   _invokeListener(listener, event) {
     try {
+      event._inPassiveListener = listener.passive;
       listener.callback.call(this, event);
 
       // 一次性监听器
@@ -128,6 +109,8 @@ class EventTarget {
       }
     } catch (error) {
       console.error('Error in event listener:', error);
+    } finally {
+      event._inPassiveListener = false;
     }
   }
 

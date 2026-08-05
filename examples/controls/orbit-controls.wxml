@@ -1,0 +1,12 @@
+<view class="container">
+  <canvas
+    type="webgl"
+    id="webgl"
+    class="webgl-canvas"
+    bindtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+    bindtouchcancel="onTouchCancel"
+  ></canvas>
+  <view class="hud">FPS: {{fps}}</view>
+</view>

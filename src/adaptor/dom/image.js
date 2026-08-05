@@ -6,7 +6,7 @@
 import { HTMLElement } from './element.js';
 
 class HTMLImageElement extends HTMLElement {
-  constructor() {
+  constructor(imageFactory = null) {
     super('img');
     this._src = '';
     this._crossOrigin = null;
@@ -17,6 +17,7 @@ class HTMLImageElement extends HTMLElement {
     this._complete = false;
     this._loading = false;
     this._image = null;
+    this._imageFactory = imageFactory;
   }
 
   get src() {
@@ -41,9 +42,13 @@ class HTMLImageElement extends HTMLElement {
   _loadImage(src) {
     // 使用小程序的 createImage
     let img;
-    if (typeof wx !== 'undefined' && wx.createImage) {
+    if (this._imageFactory) {
+      img = this._imageFactory();
+    }
+    if (!img && typeof wx !== 'undefined' && wx.createImage) {
       img = wx.createImage();
-    } else {
+    }
+    if (!img) {
       console.error('wx.createImage is not available');
       this._handleError(new Error('wx.createImage is not available'));
       return;

@@ -97,7 +97,7 @@ class HTMLCanvasElement extends HTMLElement {
           return null;
         }
 
-        this._context = new WebGL2RenderingContextWrapper(gl);
+        this._context = new WebGL2RenderingContextWrapper(gl, this);
         return this._context;
 
       case '2d':

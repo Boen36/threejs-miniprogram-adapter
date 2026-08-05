@@ -1,0 +1,9 @@
+{
+  "name": "threejs-miniprogram-adapter-examples",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "three": "0.185.1",
+    "threejs-miniprogram-adapter": "file:.."
+  }
+}
