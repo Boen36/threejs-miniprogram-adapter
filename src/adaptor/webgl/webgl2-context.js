@@ -8,68 +8,91 @@
  * 代理所有 WebGL 方法调用
  */
 class WebGL2RenderingContextWrapper {
-  constructor(gl) {
+  constructor(gl, canvas = null) {
+    if (!gl) {
+      throw new TypeError('A WebGL context is required');
+    }
+
     this._gl = gl;
-
-    // 复制所有 WebGL 常量
-    this._copyConstants();
-
-    // 创建方法代理
-    this._createMethodProxies();
-
-    // 存储扩展
+    this._canvas = canvas;
     this._extensions = new Map();
+
+    // Mini-program contexts expose members inconsistently: some are own
+    // properties, while others live on one of several prototypes.
+    this._createPropertyProxies();
   }
 
-  _copyConstants() {
-    const gl = this._gl;
-    const constants = Object.keys(gl).filter(key => typeof gl[key] === 'number');
-    constants.forEach(key => {
-      this[key] = gl[key];
-    });
+  _getPropertyNames() {
+    const names = new Set();
+    let current = this._gl;
+
+    while (current && current !== Object.prototype) {
+      Reflect.ownKeys(current).forEach(name => {
+        if (typeof name === 'string') names.add(name);
+      });
+      current = Object.getPrototypeOf(current);
+    }
+
+    return names;
   }
 
-  _createMethodProxies() {
-    const gl = this._gl;
-    const proto = Object.getPrototypeOf(gl);
-    const methodNames = Object.getOwnPropertyNames(proto).filter(name => {
-      return typeof gl[name] === 'function' && name !== 'constructor';
-    });
+  _unwrapArgument(value) {
+    if (value && value._miniProgramImage) return value._miniProgramImage;
+    if (value && value._miniProgramCanvas) return value._miniProgramCanvas;
+    return value;
+  }
 
-    methodNames.forEach(name => {
-      // 特殊处理方法
-      if (name === 'getExtension') {
-        this[name] = (...args) => this._getExtension(...args);
-      } else if (name === 'getSupportedExtensions') {
-        this[name] = (...args) => this._getSupportedExtensions(...args);
-      } else if (name === 'getParameter') {
-        this[name] = (...args) => this._getParameter(...args);
-      } else if (name === 'getShaderPrecisionFormat') {
-        this[name] = (...args) => this._getShaderPrecisionFormat(...args);
-      } else {
-        // 通用代理
-        this[name] = (...args) => {
-          try {
-            return gl[name](...args);
-          } catch (e) {
-            console.warn(`WebGL error in ${name}:`, e);
-            return null;
-          }
-        };
+  _createPropertyProxies() {
+    const gl = this._gl;
+    const reserved = new Set([
+      'constructor', '_gl', '_canvas', '_extensions', 'canvas',
+      'drawingBufferWidth', 'drawingBufferHeight'
+    ]);
+
+    this._getPropertyNames().forEach(name => {
+      if (reserved.has(name)) return;
+
+      let value;
+      try {
+        value = gl[name];
+      } catch (error) {
+        return;
       }
+
+      if (typeof value === 'function') {
+        const specialMethods = {
+          getExtension: (...args) => this._getExtension(...args),
+          getSupportedExtensions: (...args) => this._getSupportedExtensions(...args),
+          getParameter: (...args) => this._getParameter(...args),
+          getShaderPrecisionFormat: (...args) => this._getShaderPrecisionFormat(...args)
+        };
+
+        this[name] = specialMethods[name] || ((...args) =>
+          Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument))));
+        return;
+      }
+
+      Object.defineProperty(this, name, {
+        configurable: true,
+        enumerable: true,
+        get: () => gl[name],
+        set: nextValue => {
+          gl[name] = nextValue;
+        }
+      });
     });
 
-    // 确保 canvas 属性可用
     Object.defineProperty(this, 'canvas', {
-      get: () => gl.canvas
+      configurable: true,
+      get: () => this._canvas || gl.canvas
     });
-
-    // 确保 drawingBufferWidth/Height 可用
     Object.defineProperty(this, 'drawingBufferWidth', {
-      get: () => gl.drawingBufferWidth || gl.canvas.width
+      configurable: true,
+      get: () => gl.drawingBufferWidth || gl.canvas?.width || this._canvas?.width || 0
     });
     Object.defineProperty(this, 'drawingBufferHeight', {
-      get: () => gl.drawingBufferHeight || gl.canvas.height
+      configurable: true,
+      get: () => gl.drawingBufferHeight || gl.canvas?.height || this._canvas?.height || 0
     });
   }
 
@@ -172,21 +195,21 @@ class WebGL2RenderingContextWrapper {
       // 特殊处理某些参数
       switch (pname) {
         case gl.VERSION:
-          return gl.getParameter(pname) || 'WebGL 2.0 (MiniProgram)';
+          return gl.getParameter(pname) ?? 'WebGL 2.0 (MiniProgram)';
         case gl.VENDOR:
-          return gl.getParameter(pname) || 'MiniProgram';
+          return gl.getParameter(pname) ?? 'MiniProgram';
         case gl.RENDERER:
-          return gl.getParameter(pname) || 'MiniProgram WebGL';
+          return gl.getParameter(pname) ?? 'MiniProgram WebGL';
         case gl.SHADING_LANGUAGE_VERSION:
-          return gl.getParameter(pname) || 'WebGL GLSL ES 3.00';
+          return gl.getParameter(pname) ?? 'WebGL GLSL ES 3.00';
         case gl.MAX_TEXTURE_SIZE:
-          return gl.getParameter(pname) || 4096;
+          return gl.getParameter(pname) ?? 4096;
         case gl.MAX_CUBE_MAP_TEXTURE_SIZE:
-          return gl.getParameter(pname) || 4096;
+          return gl.getParameter(pname) ?? 4096;
         case gl.MAX_RENDERBUFFER_SIZE:
-          return gl.getParameter(pname) || 4096;
+          return gl.getParameter(pname) ?? 4096;
         case gl.MAX_VIEWPORT_DIMS:
-          return gl.getParameter(pname) || new Int32Array([4096, 4096]);
+          return gl.getParameter(pname) ?? new Int32Array([4096, 4096]);
         default:
           return gl.getParameter(pname);
       }

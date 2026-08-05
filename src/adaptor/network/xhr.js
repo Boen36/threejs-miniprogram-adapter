@@ -4,6 +4,7 @@
  */
 
 import { EventTarget } from '../events/event-target.js';
+import { Blob } from './blob.js';
 
 class XMLHttpRequest extends EventTarget {
   static UNSENT = 0;
@@ -147,6 +148,8 @@ class XMLHttpRequest extends EventTarget {
 
         this.status = 0;
         this.statusText = '';
+        this.readyState = XMLHttpRequest.DONE;
+        this._callOnReadyStateChange();
 
         if (err.errMsg && err.errMsg.includes('timeout')) {
           this._callOnTimeout();

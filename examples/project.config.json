@@ -1,0 +1,13 @@
+{
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "libVersion": "trial",
+  "miniprogramRoot": "./",
+  "projectname": "threejs-miniprogram-adapter-examples",
+  "setting": {
+    "es6": true,
+    "minified": false,
+    "packNpmManually": false,
+    "postcss": true
+  }
+}

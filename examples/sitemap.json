@@ -1,0 +1,9 @@
+{
+  "desc": "Development examples are not indexed.",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

@@ -144,6 +144,8 @@ class Element extends EventTarget {
     this._attributes = new Map();
     this._children = [];
     this._parent = null;
+    this._ownerDocument = null;
+    this._capturedPointers = new Set();
     this.id = '';
     this.className = '';
     this._classList = new DOMTokenList();
@@ -219,6 +221,29 @@ class Element extends EventTarget {
 
   get parentElement() {
     return this._parent;
+  }
+
+  get ownerDocument() {
+    return this._ownerDocument || null;
+  }
+
+  getRootNode() {
+    if (this._ownerDocument) return this._ownerDocument;
+    let root = this;
+    while (root._parent) root = root._parent;
+    return root;
+  }
+
+  setPointerCapture(pointerId) {
+    this._capturedPointers.add(pointerId);
+  }
+
+  releasePointerCapture(pointerId) {
+    this._capturedPointers.delete(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this._capturedPointers.has(pointerId);
   }
 
   get firstChild() {

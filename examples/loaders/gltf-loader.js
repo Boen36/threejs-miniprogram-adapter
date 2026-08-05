@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { adaptForMiniProgram, waitForCanvas, LoaderPlugins } from 'threejs-miniprogram';
+import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
 
 Page({
   data: {
@@ -20,10 +20,10 @@ Page({
       const canvas = await waitForCanvas('#webgl', this);
 
       // 适配
-      const { canvas: adaptedCanvas } = adaptForMiniProgram(canvas);
-
-      // 增强所有 Loader（处理小程序路径）
-      LoaderPlugins.enhanceAllLoaders(THREE);
+      const adapter = adaptForMiniProgram(canvas);
+      const { canvas: adaptedCanvas } = adapter;
+      this._adapter = adapter;
+      this._nativeCanvas = canvas;
 
       // 场景设置
       const scene = new THREE.Scene();
@@ -63,7 +63,7 @@ Page({
 
       // 动画循环
       const animate = () => {
-        canvas.requestAnimationFrame(animate);
+        this._animationFrame = canvas.requestAnimationFrame(animate);
         renderer.render(scene, camera);
       };
 
@@ -145,8 +145,12 @@ Page({
   },
 
   onUnload() {
+    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
+      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
+    }
     if (this._renderer) {
       this._renderer.dispose();
     }
+    this._adapter?.dispose();
   }
 });

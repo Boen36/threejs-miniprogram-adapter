@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "basic/render",
+    "controls/orbit-controls",
+    "loaders/gltf-loader"
+  ],
+  "window": {
+    "navigationBarTitleText": "Three.js Mini Program Adapter",
+    "navigationBarTextStyle": "white",
+    "navigationBarBackgroundColor": "#111827"
+  },
+  "sitemapLocation": "sitemap.json"
+}

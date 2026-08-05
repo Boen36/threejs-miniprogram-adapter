@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram';
+import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
 
 Page({
   data: {
@@ -19,10 +19,13 @@ Page({
       const canvas = await waitForCanvas('#webgl', this);
 
       // 适配
-      const { canvas: adaptedCanvas } = adaptForMiniProgram(canvas, {
+      const adapter = adaptForMiniProgram(canvas, {
         bindTouchEvents: true,
         debug: false
       });
+      const { canvas: adaptedCanvas } = adapter;
+      this._adapter = adapter;
+      this._nativeCanvas = canvas;
 
       // 场景
       const scene = new THREE.Scene();
@@ -107,7 +110,7 @@ Page({
 
       // 动画循环
       const animate = () => {
-        canvas.requestAnimationFrame(animate);
+        this._animationFrame = canvas.requestAnimationFrame(animate);
 
         // 更新 FPS
         frameCount++;
@@ -151,9 +154,30 @@ Page({
     }
   },
 
+  onTouchStart(event) {
+    this._adapter?.touchEventHandlers.touchstart(event);
+  },
+
+  onTouchMove(event) {
+    this._adapter?.touchEventHandlers.touchmove(event);
+  },
+
+  onTouchEnd(event) {
+    this._adapter?.touchEventHandlers.touchend(event);
+  },
+
+  onTouchCancel(event) {
+    this._adapter?.touchEventHandlers.touchcancel(event);
+  },
+
   onUnload() {
+    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
+      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
+    }
+    this._controls?.dispose();
     if (this._renderer) {
       this._renderer.dispose();
     }
+    this._adapter?.dispose();
   }
 });

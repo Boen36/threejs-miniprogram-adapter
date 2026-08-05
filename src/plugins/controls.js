@@ -3,6 +3,8 @@
  * 为 three.js 的各种 Controls 提供小程序触摸事件支持
  */
 
+import { bindTouchEvents } from '../adaptor/events/bridge.js';
+
 /**
  * 适配 OrbitControls 到小程序
  * @param {Object} THREE - three.js 实例
@@ -16,11 +18,6 @@ function adaptOrbitControls(THREE) {
   // OrbitControls 使用 Pointer Events，应该在适配器的事件桥接后自动工作
   // 这里添加一些小程序特定的优化
 
-  const originalConstructor = THREE.OrbitControls.prototype.constructor;
-
-  // 保存原始的 addEventListener
-  const originalAddEventListener = THREE.OrbitControls.prototype.addEventListener;
-
   // 添加小程序特定的初始化
   THREE.OrbitControls.prototype.initialize = function() {
     // 确保 canvas 支持指针事件
@@ -28,7 +25,6 @@ function adaptOrbitControls(THREE) {
 
     if (domElement && !domElement._touchHandlers) {
       // 如果 canvas 没有绑定触摸事件，尝试重新绑定
-      const { bindTouchEvents } = require('../adaptor/events/bridge.js');
       bindTouchEvents(domElement);
     }
   };
@@ -66,18 +62,19 @@ function createTouchControls(camera, domElement, options = {}) {
     ...options
   };
 
-  const state = {
-    isDragging: false,
-    isPinching: false,
-    lastTouch: null,
-    lastDistance: 0,
-    theta: 0,
-    phi: Math.PI / 2,
-    radius: 10
-  };
-
-  // 初始化
   const target = options.target || { x: 0, y: 0, z: 0 };
+  const offsetX = camera.position.x - target.x;
+  const offsetY = camera.position.y - target.y;
+  const offsetZ = camera.position.z - target.z;
+  const initialRadius = Math.sqrt(offsetX ** 2 + offsetY ** 2 + offsetZ ** 2) || 10;
+  const state = {
+    pointers: new Map(),
+    lastPoint: null,
+    lastDistance: 0,
+    theta: Math.atan2(offsetX, offsetZ),
+    phi: Math.acos(Math.max(-1, Math.min(1, offsetY / initialRadius))),
+    radius: initialRadius
+  };
 
   function updateCamera() {
     const x = target.x + state.radius * Math.sin(state.phi) * Math.sin(state.theta);
@@ -88,79 +85,71 @@ function createTouchControls(camera, domElement, options = {}) {
     camera.lookAt(target.x, target.y, target.z);
   }
 
-  function onTouchStart(event) {
-    if (event.touches.length === 1) {
-      state.isDragging = true;
-      state.lastTouch = {
-        x: event.touches[0].clientX,
-        y: event.touches[0].clientY
-      };
-    } else if (event.touches.length === 2 && config.enableZoom) {
-      state.isPinching = true;
-      const dx = event.touches[0].clientX - event.touches[1].clientX;
-      const dy = event.touches[0].clientY - event.touches[1].clientY;
-      state.lastDistance = Math.sqrt(dx * dx + dy * dy);
-    }
+  function distanceBetweenPointers() {
+    const points = Array.from(state.pointers.values());
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
   }
 
-  function onTouchMove(event) {
-    event.preventDefault();
+  function onPointerDown(event) {
+    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (state.pointers.size === 1) {
+      state.lastPoint = { x: event.clientX, y: event.clientY };
+    } else if (state.pointers.size === 2) {
+      state.lastDistance = distanceBetweenPointers();
+    }
+    domElement?.setPointerCapture?.(event.pointerId);
+  }
 
-    if (state.isDragging && config.enableRotate && event.touches.length === 1) {
-      const touch = event.touches[0];
-      const deltaX = touch.clientX - state.lastTouch.x;
-      const deltaY = touch.clientY - state.lastTouch.y;
+  function onPointerMove(event) {
+    if (!state.pointers.has(event.pointerId)) return;
+    event.preventDefault();
+    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (state.pointers.size === 1 && config.enableRotate) {
+      const deltaX = event.clientX - state.lastPoint.x;
+      const deltaY = event.clientY - state.lastPoint.y;
 
       state.theta -= deltaX * 0.01 * config.rotateSpeed;
       state.phi += deltaY * 0.01 * config.rotateSpeed;
-
-      // 限制 phi 范围
       state.phi = Math.max(config.minPolarAngle, Math.min(config.maxPolarAngle, state.phi));
-
-      state.lastTouch = {
-        x: touch.clientX,
-        y: touch.clientY
-      };
-
+      state.lastPoint = { x: event.clientX, y: event.clientY };
       updateCamera();
-    } else if (state.isPinching && config.enableZoom && event.touches.length === 2) {
-      const dx = event.touches[0].clientX - event.touches[1].clientX;
-      const dy = event.touches[0].clientY - event.touches[1].clientY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
+    } else if (state.pointers.size === 2 && config.enableZoom) {
+      const distance = distanceBetweenPointers();
+      if (!distance || !state.lastDistance) return;
       const scale = state.lastDistance / distance;
       state.radius *= scale;
-
-      // 限制缩放范围
       state.radius = Math.max(config.minDistance, Math.min(config.maxDistance, state.radius));
-
       state.lastDistance = distance;
       updateCamera();
     }
   }
 
-  function onTouchEnd() {
-    state.isDragging = false;
-    state.isPinching = false;
-    state.lastTouch = null;
+  function onPointerEnd(event) {
+    state.pointers.delete(event.pointerId);
+    domElement?.releasePointerCapture?.(event.pointerId);
+    const remaining = Array.from(state.pointers.values());
+    state.lastPoint = remaining[0] || null;
+    state.lastDistance = state.pointers.size === 2 ? distanceBetweenPointers() : 0;
   }
 
   // 绑定事件
   if (domElement) {
-    domElement.addEventListener('pointerdown', onTouchStart, { passive: false });
-    domElement.addEventListener('pointermove', onTouchMove, { passive: false });
-    domElement.addEventListener('pointerup', onTouchEnd);
-    domElement.addEventListener('pointercancel', onTouchEnd);
+    domElement.addEventListener('pointerdown', onPointerDown, { passive: false });
+    domElement.addEventListener('pointermove', onPointerMove, { passive: false });
+    domElement.addEventListener('pointerup', onPointerEnd);
+    domElement.addEventListener('pointercancel', onPointerEnd);
   }
 
   return {
     update: updateCamera,
     dispose: () => {
       if (domElement) {
-        domElement.removeEventListener('pointerdown', onTouchStart);
-        domElement.removeEventListener('pointermove', onTouchMove);
-        domElement.removeEventListener('pointerup', onTouchEnd);
-        domElement.removeEventListener('pointercancel', onTouchEnd);
+        domElement.removeEventListener('pointerdown', onPointerDown);
+        domElement.removeEventListener('pointermove', onPointerMove);
+        domElement.removeEventListener('pointerup', onPointerEnd);
+        domElement.removeEventListener('pointercancel', onPointerEnd);
       }
     },
     setTarget: (x, y, z) => {

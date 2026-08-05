@@ -1,246 +1,245 @@
 # threejs-miniprogram-adapter
 
-微信小程序 three.js 模块化适配器。支持最新 three.js (0.160.0 - 0.183.1+) 在小程序中运行。
+微信小程序 WebGL2 环境的 three.js 兼容层。它把 Canvas、DOM 事件、网络和部分浏览器 API 适配为 three.js 可用的接口，并提供 WXML 触摸事件到 PointerEvent 的桥接。
 
-> 注意：此包是新版模块化适配器，与官方已停止维护的 `threejs-miniprogram` 不同。新版无需构建时注入，直接通过 npm 安装使用。
+> 项目状态：维护恢复中，API 仍属于实验阶段。当前已有 Node 自动化测试和 three.js 版本矩阵，但尚未完成微信开发者工具、iOS 与 Android 真机验证。请不要把“自动化通过”理解为“所有 three.js 功能均已支持”。
 
-## 特性
+## 当前能力
 
-- **模块化架构** - 无需构建时注入 three.js 源码，运行时 polyfill 浏览器环境
-- **支持最新 three.js** - 兼容 three.js 0.160.0+，包括最新版本 0.183.1
-- **完整 DOM API 模拟** - 提供 window、document、EventTarget 等核心 API
-- **PointerEvent 支持** - 自动将小程序触摸事件转换为 PointerEvent
-- **WebGL2 支持** - 完整支持小程序 WebGL2 上下文
-- **Loader 增强** - 为 GLTFLoader、OBJLoader 等提供小程序路径支持
-- **Controls 适配** - OrbitControls 等触摸控制器的优化支持
+| 能力 | 状态 | 验证范围 |
+| --- | --- | --- |
+| WebGL2 Canvas 适配 | 实验支持 | 原生上下文代理自动化测试 |
+| three.js 基础 API | 实验支持 | r160、r183、r185 测试矩阵 |
+| OrbitControls 触摸 | 支持手动转发 | PointerEvent 集成测试；需绑定 WXML 事件 |
+| 普通 glTF/GLB | 实验支持 | 网络与二进制读取单元测试；待真机验证 |
+| DRACO 压缩 glTF | **暂不支持** | 标准 DRACOLoader 的 Worker 模型与微信 Worker 不兼容 |
+| KTX2、WebGPU、WebXR | 不支持 | — |
+| VideoTexture / Web Audio | 有限占位实现 | 不建议用于生产 |
+
+包声明的 three.js 范围为 `>=0.160.0 <0.186.0`。范围表示自动化兼容目标，并不代表所有 addon 都已验证。
 
 ## 安装
 
+该包目前尚未发布到 npm registry，直接运行 `npm install threejs-miniprogram-adapter` 会得到 404。发布前请从 GitHub 安装：
+
 ```bash
-npm install threejs-miniprogram-adapter
+npm install three@0.185.1 github:Boen36/threejs-miniprogram-adapter
 ```
 
-## 使用
+在微信开发者工具中执行“工具 → 构建 npm”。项目需启用 npm 支持，且依赖必须安装在 `miniprogramRoot` 对应目录内。正式发布到 npm 后，本节会切换为 registry 安装方式。
 
-### 基础用法
+## 最小用法
+
+### WXML
+
+```xml
+<canvas type="webgl" id="webgl" class="webgl-canvas"></canvas>
+```
+
+### Page
 
 ```javascript
-// page.js
 import * as THREE from 'three';
-import { adaptForMiniProgram } from 'threejs-miniprogram-adapter';
+import {
+  adaptForMiniProgram,
+  waitForCanvas
+} from 'threejs-miniprogram-adapter';
 
 Page({
   async onReady() {
-    // 1. 获取小程序 Canvas
-    const canvas = await new Promise((resolve) => {
-      wx.createSelectorQuery()
-        .select('#webgl')
-        .node()
-        .exec((res) => resolve(res[0].node));
+    const nativeCanvas = await waitForCanvas('#webgl', this);
+    const adapter = adaptForMiniProgram(nativeCanvas);
+
+    // WebGLRenderer 必须先创建，避免能力探测提前锁定 context attributes。
+    const renderer = new THREE.WebGLRenderer({
+      canvas: adapter.canvas,
+      antialias: true,
+      alpha: true
     });
 
-    // 2. 应用适配
-    const { canvas: adaptedCanvas } = adaptForMiniProgram(canvas);
+    const { width, height, pixelRatio } = adapter.updateSize();
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(width, height, false);
 
-    // 3. 正常使用 three.js
-    const renderer = new THREE.WebGLRenderer({ canvas: adaptedCanvas });
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
+    camera.position.z = 4;
 
-    // 创建物体
-    const geometry = new THREE.BoxGeometry();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const cube = new THREE.Mesh(geometry, material);
-    scene.add(cube);
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshNormalMaterial()
+    );
+    scene.add(mesh);
 
-    // 动画循环
     const animate = () => {
-      canvas.requestAnimationFrame(animate);
-      cube.rotation.x += 0.01;
-      cube.rotation.y += 0.01;
+      this._frame = nativeCanvas.requestAnimationFrame(animate);
+      mesh.rotation.x += 0.01;
+      mesh.rotation.y += 0.01;
       renderer.render(scene, camera);
     };
     animate();
+
+    console.log(adapter.inspectWebGL());
+    this._adapter = adapter;
+    this._renderer = renderer;
+    this._nativeCanvas = nativeCanvas;
+  },
+
+  onUnload() {
+    if (this._frame) this._nativeCanvas.cancelAnimationFrame(this._frame);
+    this._renderer?.dispose();
+    this._adapter?.dispose();
   }
 });
 ```
 
+`updateSize()` 读取系统窗口尺寸和像素比；它不会替你修改 renderer。页面尺寸变化后，请再次读取并调用 `renderer.setSize()`。
+
+## OrbitControls 与触摸事件
+
+给 Canvas node 写属性不会自动收到小程序触摸事件。必须在 WXML 中绑定，再转发给适配器：
+
 ```xml
-<!-- page.wxml -->
-<canvas type="webgl" id="webgl" style="width: 100vw; height: 100vh;"></canvas>
+<canvas
+  type="webgl"
+  id="webgl"
+  bindtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"
+></canvas>
 ```
 
-### 使用 OrbitControls
-
 ```javascript
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { adaptForMiniProgram } from 'threejs-miniprogram-adapter';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 Page({
   async onReady() {
-    const canvas = await waitForCanvas();
-    const { canvas: adaptedCanvas } = adaptForMiniProgram(canvas);
+    const nativeCanvas = await waitForCanvas('#webgl', this);
+    this._adapter = adaptForMiniProgram(nativeCanvas);
+    this._controls = new OrbitControls(camera, this._adapter.canvas);
+  },
 
-    const renderer = new THREE.WebGLRenderer({ canvas: adaptedCanvas });
-    const camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000);
-    camera.position.set(0, 0, 5);
-
-    // OrbitControls 会自动使用 PointerEvent
-    const controls = new OrbitControls(camera, adaptedCanvas);
-    controls.enableDamping = true;
-
-    function animate() {
-      canvas.requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    }
-    animate();
+  onTouchStart(event) {
+    this._adapter?.touchEventHandlers.touchstart(event);
+  },
+  onTouchMove(event) {
+    this._adapter?.touchEventHandlers.touchmove(event);
+  },
+  onTouchEnd(event) {
+    this._adapter?.touchEventHandlers.touchend(event);
+  },
+  onTouchCancel(event) {
+    this._adapter?.touchEventHandlers.touchcancel(event);
   }
 });
 ```
 
-### 加载模型
+完整代码见 `examples/controls/`。
+
+## 加载 glTF / GLB
 
 ```javascript
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LoaderPlugins } from 'threejs-miniprogram-adapter';
-
-// 增强 Loader 以支持小程序路径
-LoaderPlugins.enhanceAllLoaders(THREE);
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const loader = new GLTFLoader();
 loader.load(
-  'models/model.gltf', // 支持网络 URL 或小程序本地路径
-  (gltf) => {
-    scene.add(gltf.scene);
-  },
+  'https://example.com/model.glb',
+  gltf => scene.add(gltf.scene),
   undefined,
-  (error) => {
-    console.error('加载失败:', error);
-  }
+  error => console.error('模型加载失败', error)
 );
 ```
 
-### 从本地文件加载纹理
+注意：
 
-```javascript
-import { LoaderPlugins } from 'threejs-miniprogram-adapter';
+- 真机网络请求必须使用 HTTPS，并在小程序后台配置合法域名。
+- 本地临时文件和 data URL 由适配网络层处理。
+- `LoaderPlugins` 保留给兼容旧用法；普通 GLTFLoader 不需要调用 `enhanceAllLoaders()`。
+- 带 `KHR_draco_mesh_compression` 的模型当前不能使用。
 
-// 使用小程序本地文件路径
-LoaderPlugins.loadTextureFromFile(THREE, 'wxfile://tmp/texture.png', (texture) => {
-  const material = new THREE.MeshBasicMaterial({ map: texture });
-});
-```
+## 为什么暂不支持 DRACO
+
+three.js 标准 `DRACOLoader` 会动态生成 Blob URL，再调用浏览器形式的 `new Worker(blobURL)`，默认还可能创建多个 Worker。微信小程序要求 Worker 入口预先位于代码包的 workers 目录，并通过 `wx.createWorker()` 创建；消息 API、资源路径和 WASM 加载方式也不同。
+
+因此，仅补一个 `Worker` 全局或配置 decoder URL 不能可靠支持 DRACO。后续实现需要一套小程序专用 worker 入口、decoder 资源复制流程、单 Worker 调度，以及开发者工具与真机回归测试。相关进展见 [Issue #1](https://github.com/Boen36/threejs-miniprogram-adapter/issues/1)。
 
 ## API
 
-### adaptForMiniProgram(canvas, options)
+### `adaptForMiniProgram(canvas, options?)`
 
-主适配函数。
+主要选项：
 
-**参数:**
+| 选项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `injectGlobals` | `true` | 补齐缺失的 DOM、Event、fetch 等全局对象 |
+| `bindTouchEvents` | `true` | 创建触摸桥；仍需 WXML 转发 |
+| `debug` | `false` | 输出诊断信息 |
+| `canvasWidth` / `canvasHeight` | 原生尺寸 | 覆盖 Canvas backing size |
+| `pixelRatio` | 系统值 | 作为 `updateSize()` 的返回值 |
+| `checkWebGLCapabilities` | `false` | 适配时立即创建上下文；通常应保持关闭 |
+| `webglContextAttributes` | — | 仅供立即能力检查使用 |
+| `globalObject` | `globalThis` | 自定义 polyfill 注入目标，主要用于隔离测试 |
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| canvas | Object | 小程序原生 canvas 实例 |
-| options | Object | 配置选项 |
+返回值包括：
 
-**options:**
+- `canvas`：供 `THREE.WebGLRenderer` 使用的 Canvas。
+- `touchEventHandlers`：WXML 事件转发目标。
+- `updateSize()`：读取建议的窗口尺寸与像素比。
+- `inspectWebGL()`：在 renderer 创建后读取 WebGL 能力。
+- `webglReport`：最近一次能力报告，未检查时为 `null`。
+- `dispose()`：解绑触摸桥并移除 document 中的 Canvas 引用。
 
-| 选项 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| injectGlobals | boolean | true | 是否注入全局 polyfills |
-| bindTouchEvents | boolean | true | 是否自动绑定触摸事件 |
-| debug | boolean | false | 是否启用调试输出 |
-| canvasWidth | number | - | 设置 canvas 宽度 |
-| canvasHeight | number | - | 设置 canvas 高度 |
-| pixelRatio | number | - | 设置像素比 |
+### 其他导出
 
-**返回值:**
+- `waitForCanvas(selector, component?)`
+- `checkCompatibility()`
+- `quickAdapt(canvas, options?)`
+- `installPolyfills(globalObject?, config?)`
+- `LoaderPlugins`
+- `ControlPlugins`
 
-```typescript
-{
-  canvas: HTMLCanvasElement;      // 适配后的 canvas
-  miniProgramCanvas: Object;      // 原始小程序 canvas
-  document: Document;             // 适配后的 document
-  environment: EnvironmentInfo;   // 环境信息
-  webglReport: WebGLReport;       // WebGL 报告
-  updateSize: Function;           // 更新尺寸
-  touchEventHandlers: Object;     // 触摸事件处理器
-  version: string;                // 版本号
-  dispose: Function;              // 销毁资源
-}
+TypeScript 声明位于 `types/index.d.ts`，并由 CI 编译 consumer fixture。
+
+## 运行示例
+
+仓库提供可导入微信开发者工具的最小示例工程：
+
+```bash
+git clone https://github.com/Boen36/threejs-miniprogram-adapter.git
+cd threejs-miniprogram-adapter/examples
+npm install
 ```
 
-### waitForCanvas(selector, component)
+然后在微信开发者工具中导入 `examples/`，执行“构建 npm”。`project.config.json` 使用游客 AppID；真机测试请替换为自己的 AppID，并配置模型域名。
 
-等待 canvas 准备就绪。
+## 开发与验证
 
-```javascript
-import { waitForCanvas } from 'threejs-miniprogram-adapter';
-
-const canvas = await waitForCanvas('#webgl');
+```bash
+npm ci
+npm run check
 ```
 
-### checkCompatibility()
+`npm run check` 会执行：
 
-检查环境兼容性。
+1. JavaScript 语法检查；
+2. Node 单元与 three.js 集成测试；
+3. TypeScript 声明 consumer 编译；
+4. publint 与 npm tarball 检查。
 
-```javascript
-import { checkCompatibility } from 'threejs-miniprogram-adapter';
-
-const report = checkCompatibility();
-console.log(report.compatible); // true/false
-console.log(report.issues);     // 问题列表
-console.log(report.warnings);   // 警告列表
-```
+CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB 与销毁重进页面。
 
 ## 已知限制
 
-1. **WebGPU 不支持** - 小程序目前无 WebGPU API
-2. **VideoTexture 不支持** - 小程序视频组件无法直接作为纹理
-3. **Web Audio 有限支持** - 只能基础播放，无法实时处理
-4. **Worker 中的 three.js** - 小程序 Worker 限制较多
-5. **某些 WebGL 扩展** - 取决于小程序基础库支持情况
+- 仅面向微信小程序 WebGL2 Canvas，不支持 WebGPU、WebXR 和浏览器完整 DOM。
+- DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
+- `checkCompatibility()` 的 WebGL2 结论基于基础库版本；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
+- 多页面或多 Canvas 可用，但仍建议每页独立创建并在 `onUnload` 调用 `dispose()`。
 
-## 项目结构
+## 贡献
 
-```
-threejs-miniprogram-adapter/
-├── src/
-│   ├── index.js                 # 主入口
-│   ├── adaptor/                 # 核心适配层
-│   │   ├── index.js             # 适配器入口
-│   │   ├── dom/                 # DOM API 模拟
-│   │   │   ├── document.js      # document 对象
-│   │   │   ├── window.js        # window 对象
-│   │   │   ├── element.js       # HTMLElement/Element
-│   │   │   ├── canvas.js        # HTMLCanvasElement
-│   │   │   ├── image.js         # HTMLImageElement
-│   │   │   └── video.js         # HTMLVideoElement
-│   │   ├── events/              # 事件系统
-│   │   │   ├── event-target.js  # EventTarget 基类
-│   │   │   ├── event.js         # Event 类
-│   │   │   ├── pointer-event.js # PointerEvent
-│   │   │   └── bridge.js        # 事件桥接
-│   │   ├── network/             # 网络请求适配
-│   │   │   ├── fetch.js         # fetch API
-│   │   │   ├── xhr.js           # XMLHttpRequest
-│   │   │   └── blob.js          # Blob/File
-│   │   ├── webgl/               # WebGL 上下文适配
-│   │   │   ├── webgl2-context.js
-│   │   │   └── extensions.js
-│   │   └── media/               # 媒体相关适配
-│   │       ├── audio.js         # Web Audio API
-│   │       └── url.js           # URL.createObjectURL
-│   └── plugins/                 # 功能插件
-│       ├── loaders.js           # Loader 增强
-│       └── controls.js          # Controls 适配
-├── types/
-│   └── index.d.ts               # TypeScript 类型定义
-└── examples/                    # 示例代码
-```
+欢迎提交可复现 Issue 和 PR。Bug 报告请附：three.js 版本、基础库版本、开发者工具版本、平台/机型、最小模型或代码、完整错误栈。涉及渲染或交互时，请同时提供录屏或截图。
 
-## 许可证
+## License
 
-MIT
+[MIT](./LICENSE)

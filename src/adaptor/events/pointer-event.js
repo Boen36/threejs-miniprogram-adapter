@@ -50,10 +50,25 @@ PointerEvent.POINTER_OVER = 'pointerover';
 PointerEvent.POINTER_UP = 'pointerup';
 
 // 全局指针状态追踪
-const pointerState = {
-  activePointers: new Map(),
-  pointerIdCounter: 0
-};
+function createPointerState() {
+  return {
+    activePointers: new Map(),
+    pointerIdCounter: 0
+  };
+}
+
+const pointerState = createPointerState();
+let pointerStates = new WeakMap();
+
+function getPointerState(target) {
+  if (!target || (typeof target !== 'object' && typeof target !== 'function')) {
+    return pointerState;
+  }
+  if (!pointerStates.has(target)) {
+    pointerStates.set(target, createPointerState());
+  }
+  return pointerStates.get(target);
+}
 
 /**
  * 将小程序触摸点转换为 PointerEvent
@@ -64,35 +79,39 @@ const pointerState = {
  * @returns {PointerEvent}
  */
 function convertTouchToPointer(touch, type, target, options = {}) {
-  const identifier = touch.identifier || 0;
+  const identifier = touch.identifier ?? 0;
+  const state = getPointerState(target);
+  const x = touch.clientX ?? touch.x ?? touch.pageX ?? 0;
+  const y = touch.clientY ?? touch.y ?? touch.pageY ?? 0;
 
   // 管理指针状态
-  if (type === 'pointerdown') {
-    pointerState.pointerIdCounter++;
-    pointerState.activePointers.set(identifier, {
-      pointerId: pointerState.pointerIdCounter,
-      startX: touch.x,
-      startY: touch.y
+  if (type === 'pointerdown' && !state.activePointers.has(identifier)) {
+    state.pointerIdCounter++;
+    state.activePointers.set(identifier, {
+      pointerId: state.pointerIdCounter,
+      isPrimary: state.activePointers.size === 0,
+      startX: x,
+      startY: y
     });
   }
 
-  const pointerInfo = pointerState.activePointers.get(identifier);
+  const pointerInfo = state.activePointers.get(identifier);
   const pointerId = pointerInfo ? pointerInfo.pointerId : identifier + 1;
-  const isPrimary = identifier === 0;
+  const isPrimary = pointerInfo ? pointerInfo.isPrimary : state.activePointers.size === 0;
 
   // 计算移动距离（用于 movementX/Y）
   let movementX = 0;
   let movementY = 0;
   if (pointerInfo) {
-    movementX = touch.x - (pointerInfo.lastX || pointerInfo.startX);
-    movementY = touch.y - (pointerInfo.lastY || pointerInfo.startY);
-    pointerInfo.lastX = touch.x;
-    pointerInfo.lastY = touch.y;
+    movementX = x - (pointerInfo.lastX ?? pointerInfo.startX);
+    movementY = y - (pointerInfo.lastY ?? pointerInfo.startY);
+    pointerInfo.lastX = x;
+    pointerInfo.lastY = y;
   }
 
   // pointerup 和 pointercancel 清理状态
   if (type === 'pointerup' || type === 'pointercancel') {
-    pointerState.activePointers.delete(identifier);
+    state.activePointers.delete(identifier);
   }
 
   return new PointerEvent(type, {
@@ -102,12 +121,12 @@ function convertTouchToPointer(touch, type, target, options = {}) {
     composed: true,
 
     // 坐标
-    clientX: touch.x || 0,
-    clientY: touch.y || 0,
-    screenX: touch.screenX || touch.x || 0,
-    screenY: touch.screenY || touch.y || 0,
-    pageX: touch.x || 0,
-    pageY: touch.y || 0,
+    clientX: x,
+    clientY: y,
+    screenX: touch.screenX ?? x,
+    screenY: touch.screenY ?? y,
+    pageX: touch.pageX ?? x,
+    pageY: touch.pageY ?? y,
 
     // 移动
     movementX: movementX,
@@ -155,28 +174,26 @@ function convertTouchesToPointers(touches, type, target, options = {}) {
     return [];
   }
 
-  return touches.map((touch, index) => {
-    // 第一个触摸点是主指针
-    const isPrimary = index === 0;
-    return convertTouchToPointer(touch, type, target, {
-      ...options,
-      isPrimary
-    });
-  });
+  return touches.map(touch => convertTouchToPointer(touch, type, target, options));
 }
 
 /**
  * 获取当前活跃的指针数量
  * @returns {number}
  */
-function getActivePointerCount() {
-  return pointerState.activePointers.size;
+function getActivePointerCount(target = null) {
+  return getPointerState(target).activePointers.size;
 }
 
 /**
  * 清除所有指针状态（用于重置）
  */
-function clearPointerState() {
+function clearPointerState(target = null) {
+  if (target) {
+    pointerStates.delete(target);
+    return;
+  }
+  pointerStates = new WeakMap();
   pointerState.activePointers.clear();
   pointerState.pointerIdCounter = 0;
 }

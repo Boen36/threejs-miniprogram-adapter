@@ -19,11 +19,11 @@ class WebGLExtensions {
   _detectExtensions() {
     const gl = this._gl;
 
-    if (!gl || !gl._rawContext) {
+    if (!gl) {
       return;
     }
 
-    const rawGl = gl._rawContext;
+    const rawGl = gl._rawContext || gl;
 
     // 常见扩展列表
     const commonExtensions = [
@@ -79,9 +79,9 @@ class WebGLExtensions {
 
   _detectCapabilities() {
     const gl = this._gl;
-    if (!gl || !gl._rawContext) return;
+    if (!gl) return;
 
-    const rawGl = gl._rawContext;
+    const rawGl = gl._rawContext || gl;
 
     this._capabilities = {
       // 纹理尺寸
@@ -126,7 +126,8 @@ class WebGLExtensions {
 
   _getSafeParameter(pname, defaultValue) {
     try {
-      return this._gl._rawContext.getParameter(pname) || defaultValue;
+      const rawGl = this._gl._rawContext || this._gl;
+      return rawGl.getParameter(pname) ?? defaultValue;
     } catch (e) {
       return defaultValue;
     }

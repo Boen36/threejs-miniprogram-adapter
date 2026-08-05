@@ -4,6 +4,9 @@
  */
 
 import { Element, HTMLElement } from './element.js';
+import { HTMLCanvasElement } from './canvas.js';
+import { HTMLImageElement } from './image.js';
+import { HTMLVideoElement } from './video.js';
 
 class Document extends HTMLElement {
   constructor() {
@@ -16,6 +19,7 @@ class Document extends HTMLElement {
     this._documentElement.appendChild(this._head);
     this._documentElement.appendChild(this._body);
     this._canvas = null;
+    this._canvases = new Set();
   }
 
   get documentElement() {
@@ -73,9 +77,29 @@ class Document extends HTMLElement {
   }
 
   setCanvas(canvas) {
+    if (!canvas) {
+      this._canvas = null;
+      return;
+    }
+
     this._canvas = canvas;
+    this._canvases.add(canvas);
+    canvas._ownerDocument = this;
     if (canvas.id) {
       this._elementsById.set(canvas.id, canvas);
+    }
+  }
+
+  removeCanvas(canvas) {
+    if (!canvas) return;
+    this._canvases.delete(canvas);
+    canvas._ownerDocument = null;
+    if (canvas.id && this._elementsById.get(canvas.id) === canvas) {
+      this._elementsById.delete(canvas.id);
+    }
+    if (this._canvas === canvas) {
+      const canvases = Array.from(this._canvases);
+      this._canvas = canvases[canvases.length - 1] || null;
     }
   }
 
@@ -135,14 +159,11 @@ class Document extends HTMLElement {
     // 动态导入以避免循环依赖
     switch (tagName) {
       case 'canvas':
-        const { HTMLCanvasElement } = require('./canvas.js');
         return new HTMLCanvasElement();
       case 'img':
       case 'image':
-        const { HTMLImageElement } = require('./image.js');
-        return new HTMLImageElement();
+        return new HTMLImageElement(() => this._canvas?.createImage());
       case 'video':
-        const { HTMLVideoElement } = require('./video.js');
         return new HTMLVideoElement();
       case 'div':
       case 'span':

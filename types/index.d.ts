@@ -1,5 +1,5 @@
 /**
- * threejs-miniprogram TypeScript 类型定义
+ * threejs-miniprogram-adapter TypeScript 类型定义
  */
 
 export interface AdaptOptions {
@@ -35,6 +35,19 @@ export interface AdaptOptions {
    * 设置像素比
    */
   pixelRatio?: number;
+
+  /** 注入 polyfill 的目标对象，默认使用 globalThis。 */
+  globalObject?: Record<string, any>;
+
+  /**
+   * 是否在适配时立即创建 WebGL 上下文并生成能力报告。
+   * 默认关闭，以免在 WebGLRenderer 之前锁定上下文属性。
+   * @default false
+   */
+  checkWebGLCapabilities?: boolean;
+
+  /** 立即检查 WebGL 能力时使用的上下文属性。 */
+  webglContextAttributes?: WebGLContextAttributes;
 }
 
 export interface AdaptResult {
@@ -62,6 +75,9 @@ export interface AdaptResult {
    * WebGL 扩展和能力的报告
    */
   webglReport: WebGLReport | null;
+
+  /** 在 WebGLRenderer 创建后安全地读取能力报告。 */
+  inspectWebGL: () => WebGLReport | null;
 
   /**
    * 更新尺寸的函数
@@ -318,11 +334,14 @@ export namespace ControlPlugins {
 // 版本号
 export const VERSION: string;
 
-// 默认导出
-export default {
-  adaptForMiniProgram,
-  quickAdapt,
-  checkCompatibility,
-  waitForCanvas,
-  VERSION
+declare const adapter: {
+  adaptForMiniProgram: typeof adaptForMiniProgram;
+  quickAdapt: typeof quickAdapt;
+  checkCompatibility: typeof checkCompatibility;
+  waitForCanvas: typeof waitForCanvas;
+  VERSION: typeof VERSION;
+  LoaderPlugins: typeof LoaderPlugins;
+  ControlPlugins: typeof ControlPlugins;
 };
+
+export default adapter;

@@ -20,7 +20,8 @@ function createObjectURL(blob) {
 
   // 生成唯一 ID
   objectURLCounter++;
-  const id = `blob:${location?.origin || 'miniapp'}/${objectURLCounter}`;
+  const origin = typeof location !== 'undefined' && location.origin ? location.origin : 'miniapp';
+  const id = `blob:${origin}/${objectURLCounter}`;
 
   // 存储 blob 数据
   objectURLs.set(id, {
@@ -29,7 +30,7 @@ function createObjectURL(blob) {
   });
 
   // 如果是小程序环境，尝试写入临时文件
-  if (typeof wx !== 'undefined' && wx.getFileSystemManager && blob instanceof Blob) {
+  if (typeof wx !== 'undefined' && wx.getFileSystemManager) {
     try {
       const tempPath = saveBlobToTempFile(blob, id);
       if (tempPath) {
@@ -51,23 +52,19 @@ function createObjectURL(blob) {
  * @returns {string|null}
  */
 function saveBlobToTempFile(blob, id) {
+  if (typeof blob._toUint8ArraySync !== 'function') return null;
+
   const fs = wx.getFileSystemManager();
   const tempFilePath = `${wx.env.USER_DATA_PATH}/blob_${Date.now()}_${objectURLCounter}`;
-
-  blob.arrayBuffer().then(buffer => {
-    try {
-      fs.writeFileSync(tempFilePath, buffer, 'binary');
-    } catch (e) {
-      console.warn('Failed to write temp file:', e);
-    }
-  }).catch(e => {
-    console.warn('Failed to read blob:', e);
-  });
+  const bytes = blob._toUint8ArraySync();
+  fs.writeFileSync(tempFilePath, bytes.buffer);
 
   // 存储映射
   const stored = objectURLs.get(id);
   if (stored) {
     stored.tempFilePath = tempFilePath;
+    objectURLs.delete(id);
+    objectURLs.set(tempFilePath, stored);
   }
 
   return tempFilePath;

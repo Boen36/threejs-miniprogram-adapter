@@ -1,0 +1,57 @@
+name: Bug report
+description: 报告可复现的适配、渲染、加载或交互问题
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 感谢反馈。请尽量提供最小复现，真机问题请注明机型与系统。
+  - type: input
+    id: three-version
+    attributes:
+      label: three.js 版本
+      placeholder: 0.185.1
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: 微信环境
+      description: 基础库、开发者工具、系统和机型
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题区域
+      options:
+        - WebGL / Renderer
+        - Controls / 触摸
+        - Loader / 模型或纹理
+        - DOM / Event polyfill
+        - Network / Blob / URL
+        - TypeScript / 包发布
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现
+      description: 仓库、代码、模型链接或清晰的复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 完整日志
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issues，并确认不是重复问题
+          required: true
+        - label: 我确认问题不是 DRACO/KTX2/WebGPU 等已知不支持能力
+          required: true

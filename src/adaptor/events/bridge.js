@@ -5,6 +5,13 @@
 
 import { PointerEvent, convertTouchesToPointers, clearPointerState } from './pointer-event.js';
 
+function dispatchPointerEvent(canvas, event) {
+  canvas.dispatchEvent(event);
+  if (!event._stopped && canvas.ownerDocument && canvas.ownerDocument !== canvas) {
+    canvas.ownerDocument.dispatchEvent(event);
+  }
+}
+
 /**
  * 绑定小程序触摸事件到 canvas
  * @param {HTMLCanvasElement} canvas - 适配后的 canvas 元素
@@ -19,12 +26,17 @@ function bindTouchEvents(canvas, options = {}) {
   const miniCanvas = canvas._miniProgramCanvas;
   const { capture = false, passive = true } = options;
 
+  if (canvas._touchHandlers) {
+    unbindTouchEvents(canvas);
+  }
+
   // 触摸开始
   const onTouchStart = (e) => {
-    const pointers = convertTouchesToPointers(e.touches, 'pointerdown', canvas);
+    const changedTouches = e.changedTouches || e.touches || [];
+    const pointers = convertTouchesToPointers(changedTouches, 'pointerdown', canvas);
 
     pointers.forEach(pointer => {
-      canvas.dispatchEvent(pointer);
+      dispatchPointerEvent(canvas, pointer);
     });
 
     // 触发 pointerenter（如果是第一个指针）
@@ -33,13 +45,13 @@ function bindTouchEvents(canvas, options = {}) {
         ...pointers[0],
         bubbles: false
       });
-      canvas.dispatchEvent(enterEvent);
+      dispatchPointerEvent(canvas, enterEvent);
 
       // 同时触发 pointerover
       const overEvent = new PointerEvent('pointerover', {
         ...pointers[0]
       });
-      canvas.dispatchEvent(overEvent);
+      dispatchPointerEvent(canvas, overEvent);
     }
 
     // 阻止默认行为（如果需要）
@@ -53,7 +65,7 @@ function bindTouchEvents(canvas, options = {}) {
     const pointers = convertTouchesToPointers(e.touches, 'pointermove', canvas);
 
     pointers.forEach(pointer => {
-      canvas.dispatchEvent(pointer);
+      dispatchPointerEvent(canvas, pointer);
     });
 
     if (!passive) {
@@ -67,32 +79,26 @@ function bindTouchEvents(canvas, options = {}) {
     const pointers = convertTouchesToPointers(e.changedTouches, 'pointerup', canvas);
 
     pointers.forEach(pointer => {
-      canvas.dispatchEvent(pointer);
+      dispatchPointerEvent(canvas, pointer);
     });
 
     // 检查是否所有触摸都结束了
-    const activeCount = (e.touches || []).length - (e.changedTouches || []).length;
-    if (activeCount <= 0) {
+    if ((e.touches || []).length === 0) {
       // 触发 pointerleave 和 pointerout
       if (pointers.length > 0) {
         const leaveEvent = new PointerEvent('pointerleave', {
           ...pointers[0],
           bubbles: false
         });
-        canvas.dispatchEvent(leaveEvent);
+        dispatchPointerEvent(canvas, leaveEvent);
 
         const outEvent = new PointerEvent('pointerout', {
           ...pointers[0]
         });
-        canvas.dispatchEvent(outEvent);
+        dispatchPointerEvent(canvas, outEvent);
       }
     }
 
-    // 同时触发 pointercancel 以防万一
-    const cancelPointers = convertTouchesToPointers(e.changedTouches, 'pointercancel', canvas);
-    cancelPointers.forEach(pointer => {
-      // pointercancel 不会自动触发，需要特殊处理
-    });
   };
 
   // 触摸取消
@@ -100,11 +106,11 @@ function bindTouchEvents(canvas, options = {}) {
     const pointers = convertTouchesToPointers(e.changedTouches, 'pointercancel', canvas);
 
     pointers.forEach(pointer => {
-      canvas.dispatchEvent(pointer);
+      dispatchPointerEvent(canvas, pointer);
     });
 
     // 清理指针状态
-    clearPointerState();
+    clearPointerState(canvas);
   };
 
   // 长按（小程序特有）
@@ -118,11 +124,18 @@ function bindTouchEvents(canvas, options = {}) {
       button: 2, // 右键
       buttons: 2
     });
-    canvas.dispatchEvent(contextMenuEvent);
+    dispatchPointerEvent(canvas, contextMenuEvent);
   };
 
   // 绑定事件
   // 小程序使用特定的属性绑定方式
+  const previousHandlers = {
+    touchStart: miniCanvas.touchStart,
+    touchMove: miniCanvas.touchMove,
+    touchEnd: miniCanvas.touchEnd,
+    touchCancel: miniCanvas.touchCancel,
+    longPress: miniCanvas.longPress
+  };
   miniCanvas.touchStart = onTouchStart;
   miniCanvas.touchMove = onTouchMove;
   miniCanvas.touchEnd = onTouchEnd;
@@ -135,7 +148,8 @@ function bindTouchEvents(canvas, options = {}) {
     touchMove: onTouchMove,
     touchEnd: onTouchEnd,
     touchCancel: onTouchCancel,
-    longPress: onLongPress
+    longPress: onLongPress,
+    previousHandlers
   };
 
   // 返回解绑函数
@@ -155,14 +169,15 @@ function unbindTouchEvents(canvas) {
 
   const miniCanvas = canvas._miniProgramCanvas;
 
-  miniCanvas.touchStart = null;
-  miniCanvas.touchMove = null;
-  miniCanvas.touchEnd = null;
-  miniCanvas.touchCancel = null;
-  miniCanvas.longPress = null;
+  const previous = canvas._touchHandlers.previousHandlers || {};
+  miniCanvas.touchStart = previous.touchStart;
+  miniCanvas.touchMove = previous.touchMove;
+  miniCanvas.touchEnd = previous.touchEnd;
+  miniCanvas.touchCancel = previous.touchCancel;
+  miniCanvas.longPress = previous.longPress;
 
   // 清理指针状态
-  clearPointerState();
+  clearPointerState(canvas);
 
   delete canvas._touchHandlers;
 }

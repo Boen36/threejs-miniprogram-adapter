@@ -1,0 +1,27 @@
+name: Feature request
+description: 提议新的适配能力或兼容目标
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: 使用场景
+      description: 请描述真实需求、目标平台和当前阻塞点
+    validations:
+      required: true
+  - type: textarea
+    id: api
+    attributes:
+      label: 期望 API 或行为
+  - type: textarea
+    id: references
+    attributes:
+      label: 最小资源与参考实现
+      description: 可公开的模型、仓库、three.js addon 或微信文档链接
+  - type: checkboxes
+    id: validation
+    attributes:
+      label: 验证条件
+      options:
+        - label: 我可以协助开发者工具或真机验证

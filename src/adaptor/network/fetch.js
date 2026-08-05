@@ -3,6 +3,9 @@
  * 基于 wx.request 实现标准的 fetch 接口
  */
 
+import { Blob } from './blob.js';
+import { URLSearchParams } from '../media/url.js';
+
 // Headers 类
 class Headers {
   constructor(init) {
@@ -89,7 +92,7 @@ class Request {
       this.url = String(input);
       this.method = (init.method || 'GET').toUpperCase();
       this.headers = new Headers(init.headers);
-      this.body = init.body || null;
+      this.body = init.body ?? null;
       this.mode = init.mode || 'cors';
       this.credentials = init.credentials || 'same-origin';
       this.cache = init.cache || 'default';
@@ -147,8 +150,8 @@ class Response {
   constructor(body, init = {}) {
     this.type = 'default';
     this.url = init.url || '';
-    this.status = init.status || 200;
-    this.statusText = init.statusText || 'OK';
+    this.status = init.status ?? 200;
+    this.statusText = init.statusText ?? 'OK';
     this.ok = this.status >= 200 && this.status < 300;
     this.headers = new Headers(init.headers);
     this.redirected = init.redirected || false;
@@ -156,8 +159,6 @@ class Response {
     this._body = body;
     this._bodyUsed = false;
 
-    // 是否可以读取 body
-    this.bodyUsed = false;
   }
 
   get bodyUsed() {
@@ -328,16 +329,18 @@ function readLocalFile(filePath, resolve, reject) {
   }
 
   const fs = wx.getFileSystemManager();
-  const cleanPath = filePath.replace(/^file:\/\//, '').replace(/^wxfile:\/\//, '');
+  const cleanPath = filePath.replace(/^file:\/\//, '');
 
   fs.readFile({
     filePath: cleanPath,
-    encoding: 'binary',
     success: (res) => {
       let data = res.data;
       if (typeof data === 'string') {
-        const encoder = new TextEncoder();
-        data = encoder.encode(data).buffer;
+        const bytes = new Uint8Array(data.length);
+        for (let index = 0; index < data.length; index++) {
+          bytes[index] = data.charCodeAt(index) & 0xff;
+        }
+        data = bytes.buffer;
       }
 
       resolve(new Response(data, {
