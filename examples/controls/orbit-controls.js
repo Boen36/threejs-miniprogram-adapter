@@ -126,6 +126,7 @@ Page({
 
         renderer.render(scene, camera);
       };
+      this._animate = animate;
 
       animate();
 
@@ -179,5 +180,20 @@ Page({
       this._renderer.dispose();
     }
     this._adapter?.dispose();
+  },
+
+  onHide() {
+    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
+      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
+      this._animationFrame = null;
+    }
+  },
+
+  onShow() {
+    if (!this._adapter) return;
+    this._adapter.canvas.recoverContext();
+    if (!this._animationFrame && this._animate) {
+      this._animate();
+    }
   }
 });

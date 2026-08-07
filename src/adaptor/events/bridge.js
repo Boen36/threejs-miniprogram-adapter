@@ -13,22 +13,12 @@ function dispatchPointerEvent(canvas, event) {
 }
 
 /**
- * 绑定小程序触摸事件到 canvas
- * @param {HTMLCanvasElement} canvas - 适配后的 canvas 元素
- * @param {Object} options - 配置选项
+ * 创建触摸处理器（内部）。
+ * 处理器表与「是否直赋原生 canvas 属性」解耦：
+ * 微信宿主没有"赋属性即注册事件"的机制，事件只能通过 WXML 转发。
  */
-function bindTouchEvents(canvas, options = {}) {
-  if (!canvas || !canvas._miniProgramCanvas) {
-    console.error('Invalid canvas for binding touch events');
-    return;
-  }
-
-  const miniCanvas = canvas._miniProgramCanvas;
-  const { capture = false, passive = true } = options;
-
-  if (canvas._touchHandlers) {
-    unbindTouchEvents(canvas);
-  }
+function createTouchHandlers(canvas, options = {}) {
+  const { passive = true } = options;
 
   // 触摸开始
   const onTouchStart = (e) => {
@@ -53,11 +43,6 @@ function bindTouchEvents(canvas, options = {}) {
       });
       dispatchPointerEvent(canvas, overEvent);
     }
-
-    // 阻止默认行为（如果需要）
-    if (!passive) {
-      // 小程序无法 preventDefault，需要设置 catch
-    }
   };
 
   // 触摸移动
@@ -67,10 +52,6 @@ function bindTouchEvents(canvas, options = {}) {
     pointers.forEach(pointer => {
       dispatchPointerEvent(canvas, pointer);
     });
-
-    if (!passive) {
-      // 小程序无法 preventDefault
-    }
   };
 
   // 触摸结束
@@ -98,7 +79,6 @@ function bindTouchEvents(canvas, options = {}) {
         dispatchPointerEvent(canvas, outEvent);
       }
     }
-
   };
 
   // 触摸取消
@@ -115,11 +95,12 @@ function bindTouchEvents(canvas, options = {}) {
 
   // 长按（小程序特有）
   const onLongPress = (e) => {
+    const touch = (e.changedTouches || e.touches || [])[0];
     // 可以转换为 contextmenu 事件
     const contextMenuEvent = new PointerEvent('contextmenu', {
-      clientX: e.x || 0,
-      clientY: e.y || 0,
-      pointerId: 0,
+      clientX: touch?.clientX || e.x || 0,
+      clientY: touch?.clientY || e.y || 0,
+      pointerId: touch?.identifier ?? 1,
       pointerType: 'touch',
       button: 2, // 右键
       buttons: 2
@@ -127,30 +108,56 @@ function bindTouchEvents(canvas, options = {}) {
     dispatchPointerEvent(canvas, contextMenuEvent);
   };
 
-  // 绑定事件
-  // 小程序使用特定的属性绑定方式
-  const previousHandlers = {
-    touchStart: miniCanvas.touchStart,
-    touchMove: miniCanvas.touchMove,
-    touchEnd: miniCanvas.touchEnd,
-    touchCancel: miniCanvas.touchCancel,
-    longPress: miniCanvas.longPress
-  };
-  miniCanvas.touchStart = onTouchStart;
-  miniCanvas.touchMove = onTouchMove;
-  miniCanvas.touchEnd = onTouchEnd;
-  miniCanvas.touchCancel = onTouchCancel;
-  miniCanvas.longPress = onLongPress;
-
-  // 存储处理器以便后续解绑
-  canvas._touchHandlers = {
+  return {
     touchStart: onTouchStart,
     touchMove: onTouchMove,
     touchEnd: onTouchEnd,
     touchCancel: onTouchCancel,
-    longPress: onLongPress,
-    previousHandlers
+    longPress: onLongPress
   };
+}
+
+/**
+ * 确保 canvas 上存在触摸处理器表（幂等）。
+ */
+function ensureTouchHandlers(canvas, options = {}) {
+  if (!canvas || !canvas._miniProgramCanvas) {
+    return null;
+  }
+  if (!canvas._touchHandlers) {
+    canvas._touchHandlers = {
+      ...createTouchHandlers(canvas, options),
+      previousHandlers: null
+    };
+  }
+  return canvas._touchHandlers;
+}
+
+/**
+ * 绑定小程序触摸事件到 canvas
+ * @param {HTMLCanvasElement} canvas - 适配后的 canvas 元素
+ * @param {Object} options - 配置选项
+ *
+ * 注意：微信小程序没有"给 canvas 节点属性赋函数即注册事件"的机制，
+ * 触摸事件必须通过 WXML 的 bindtouch* 绑定后转发到 createTouchEventHandlers()。
+ * 本函数只负责创建并保存处理器表，不会（也无法）自动接收事件。
+ */
+function bindTouchEvents(canvas, options = {}) {
+  if (!canvas || !canvas._miniProgramCanvas) {
+    console.error('Invalid canvas for binding touch events');
+    return undefined;
+  }
+
+  const { debug = false } = options;
+  ensureTouchHandlers(canvas, options);
+
+  if (debug) {
+    console.warn(
+      '[threejs-miniprogram-adapter] bindTouchEvents only prepares the touch handler table. ' +
+      'To receive touches, bind bindtouchstart/bindtouchmove/bindtouchend/bindtouchcancel ' +
+      'in WXML and forward events to adapter.touchEventHandlers.'
+    );
+  }
 
   // 返回解绑函数
   return () => {
@@ -167,15 +174,6 @@ function unbindTouchEvents(canvas) {
     return;
   }
 
-  const miniCanvas = canvas._miniProgramCanvas;
-
-  const previous = canvas._touchHandlers.previousHandlers || {};
-  miniCanvas.touchStart = previous.touchStart;
-  miniCanvas.touchMove = previous.touchMove;
-  miniCanvas.touchEnd = previous.touchEnd;
-  miniCanvas.touchCancel = previous.touchCancel;
-  miniCanvas.longPress = previous.longPress;
-
   // 清理指针状态
   clearPointerState(canvas);
 
@@ -189,32 +187,23 @@ function unbindTouchEvents(canvas) {
  * @returns {Object} 事件处理器对象，可用于 WXML
  */
 function createTouchEventHandlers(canvas) {
+  const handlers = ensureTouchHandlers(canvas);
+  if (!handlers) {
+    return {
+      touchstart: () => {},
+      touchmove: () => {},
+      touchend: () => {},
+      touchcancel: () => {},
+      longpress: () => {}
+    };
+  }
+
   return {
-    touchstart: (e) => {
-      if (canvas._touchHandlers) {
-        canvas._touchHandlers.touchStart(e);
-      }
-    },
-    touchmove: (e) => {
-      if (canvas._touchHandlers) {
-        canvas._touchHandlers.touchMove(e);
-      }
-    },
-    touchend: (e) => {
-      if (canvas._touchHandlers) {
-        canvas._touchHandlers.touchEnd(e);
-      }
-    },
-    touchcancel: (e) => {
-      if (canvas._touchHandlers) {
-        canvas._touchHandlers.touchCancel(e);
-      }
-    },
-    longpress: (e) => {
-      if (canvas._touchHandlers) {
-        canvas._touchHandlers.longPress(e);
-      }
-    }
+    touchstart: (e) => handlers.touchStart(e),
+    touchmove: (e) => handlers.touchMove(e),
+    touchend: (e) => handlers.touchEnd(e),
+    touchcancel: (e) => handlers.touchCancel(e),
+    longpress: (e) => handlers.longPress(e)
   };
 }
 

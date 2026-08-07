@@ -249,8 +249,7 @@ async function fetch(input, init = {}) {
       header: {},
       data: request.body,
       responseType: 'arraybuffer',
-      enableHttp2: true,
-      enableQuic: true,
+      // enableHttp2/enableQuic 交由宿主默认（强制开启在部分企业网络/代理下会失败）
       enableCache: request.cache !== 'no-store',
       success: (res) => {
         const headers = new Headers();
@@ -290,8 +289,9 @@ async function fetch(input, init = {}) {
       requestOptions.header[key] = value;
     });
 
-    // 处理本地文件
-    if (request.url.startsWith('file://') || request.url.startsWith('wxfile://')) {
+    // 处理本地文件（file://、wxfile://、或 wx.env.USER_DATA_PATH 前缀；
+    // 后者兼容开发者工具的 http://usr 形态）
+    if (isLocalFilePath(request.url)) {
       readLocalFile(request.url, resolve, reject);
       return;
     }
@@ -321,6 +321,47 @@ async function fetch(input, init = {}) {
   });
 }
 
+/**
+ * 判断 URL 是否指向小程序沙箱内的本地文件。
+ * 兼容三种形态：file://（浏览器风格）、wxfile://（真机）、
+ * wx.env.USER_DATA_PATH 前缀（开发者工具为 http://usr）。
+ */
+function isLocalFilePath(url) {
+  if (url.startsWith('file://') || url.startsWith('wxfile://')) return true;
+  const userDataPath = typeof wx !== 'undefined' && wx.env ? wx.env.USER_DATA_PATH : null;
+  if (userDataPath && (url === userDataPath || url.startsWith(`${userDataPath}/`))) return true;
+  return false;
+}
+
+/**
+ * 归一化本地文件路径：file:// 映射为 wxfile://（fs 可读的协议路径），
+ * wxfile:// 与开发者工具的 http://usr 形态原样保留。
+ */
+function normalizeLocalFilePath(filePath) {
+  if (filePath.startsWith('file://')) {
+    const rest = filePath.slice('file://'.length);
+    return `wxfile://${rest.startsWith('/') ? rest.slice(1) : rest}`;
+  }
+  return filePath;
+}
+
+/**
+ * 沙箱白名单校验：只允许读取小程序自身的数据目录（usr）与代码包（store），
+ * 拒绝路径遍历（..）。
+ */
+function isSafeLocalPath(filePath) {
+  if (filePath.split(/[\\/]/).includes('..')) return false;
+  if (filePath.startsWith('wxfile://')) {
+    return filePath === 'wxfile://usr' || filePath.startsWith('wxfile://usr/') ||
+      filePath === 'wxfile://store' || filePath.startsWith('wxfile://store/');
+  }
+  const userDataPath = typeof wx !== 'undefined' && wx.env ? wx.env.USER_DATA_PATH : null;
+  if (userDataPath && (filePath === userDataPath || filePath.startsWith(`${userDataPath}/`))) {
+    return true;
+  }
+  return false;
+}
+
 // 读取本地文件
 function readLocalFile(filePath, resolve, reject) {
   if (typeof wx === 'undefined' || !wx.getFileSystemManager) {
@@ -329,10 +370,15 @@ function readLocalFile(filePath, resolve, reject) {
   }
 
   const fs = wx.getFileSystemManager();
-  const cleanPath = filePath.replace(/^file:\/\//, '');
+  const normalizedPath = normalizeLocalFilePath(filePath);
+
+  if (!isSafeLocalPath(normalizedPath)) {
+    reject(new Error('Local file access is restricted to the mini program sandbox'));
+    return;
+  }
 
   fs.readFile({
-    filePath: cleanPath,
+    filePath: normalizedPath,
     success: (res) => {
       let data = res.data;
       if (typeof data === 'string') {
@@ -370,8 +416,15 @@ function handleDataUrl(url) {
   if (isBase64) {
     buffer = base64ToArrayBuffer(data);
   } else {
+    let decoded;
+    try {
+      decoded = decodeURIComponent(data);
+    } catch {
+      // 非法百分号序列：按原样保留，避免 URIError 外泄
+      decoded = data;
+    }
     const encoder = new TextEncoder();
-    buffer = encoder.encode(decodeURIComponent(data)).buffer;
+    buffer = encoder.encode(decoded).buffer;
   }
 
   return new Response(buffer, {
@@ -400,16 +453,25 @@ function atob(str) {
     return global.atob(str);
   }
 
+  // 补齐 padding，避免末尾越界产生 '\0'；length%4===1 必然是非法输入
+  let input = String(str).replace(/\s/g, '');
+  if (input.length % 4 === 1) {
+    throw new DOMException('The string to be decoded is not correctly encoded.', 'InvalidCharacterError');
+  }
+  while (input.length % 4 !== 0) {
+    input += '=';
+  }
+
   // 简单实现
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let output = '';
   let i = 0;
 
-  while (i < str.length) {
-    const enc1 = chars.indexOf(str.charAt(i++));
-    const enc2 = chars.indexOf(str.charAt(i++));
-    const enc3 = chars.indexOf(str.charAt(i++));
-    const enc4 = chars.indexOf(str.charAt(i++));
+  while (i < input.length) {
+    const enc1 = chars.indexOf(input.charAt(i++));
+    const enc2 = chars.indexOf(input.charAt(i++));
+    const enc3 = chars.indexOf(input.charAt(i++));
+    const enc4 = chars.indexOf(input.charAt(i++));
 
     const chr1 = (enc1 << 2) | (enc2 >> 4);
     const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);

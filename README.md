@@ -9,7 +9,7 @@
 | 能力 | 状态 | 验证范围 |
 | --- | --- | --- |
 | WebGL2 Canvas 适配 | 实验支持 | 原生上下文代理自动化测试 |
-| three.js 基础 API | 实验支持 | r160、r183、r185 测试矩阵 |
+| three.js 基础 API | 实验支持 | r160、r183、r185 测试矩阵；r160~r162 建议升级（见下方说明） |
 | OrbitControls 触摸 | 支持手动转发 | PointerEvent 集成测试；需绑定 WXML 事件 |
 | 普通 glTF/GLB | 实验支持 | 网络与二进制读取单元测试；待真机验证 |
 | DRACO 压缩 glTF | **暂不支持** | 标准 DRACOLoader 的 Worker 模型与微信 Worker 不兼容 |
@@ -17,6 +17,10 @@
 | VideoTexture / Web Audio | 有限占位实现 | 不建议用于生产 |
 
 包声明的 three.js 范围为 `>=0.160.0 <0.186.0`。范围表示自动化兼容目标，并不代表所有 addon 都已验证。
+
+**基础库要求**：WebGL2 上下文需要基础库 `>= 2.24.0`（`wx.canvas.getContext('webgl2')` 的最低版本）。基础库较低时 `getContext('webgl')` 会返回真实的 WebGL1 上下文（wrapper 会按实际版本报告 `isWebGL2`），three.js r160 的回退链可以工作；r163+ 只请求 WebGL2，低基础库上会得到明确的错误提示而非黑屏。建议使用 `checkCompatibility()` 或 `detectEnvironment()` 校验。
+
+**three.js r160~r162**：three 通过 `gl.constructor.name` 判定 WebGL 版本，适配器已伪装该名称，但仍建议使用 r163+（r163 起 three 直接假定 WebGL2）。
 
 ## 安装
 
@@ -97,7 +101,7 @@ Page({
 
 ## OrbitControls 与触摸事件
 
-给 Canvas node 写属性不会自动收到小程序触摸事件。必须在 WXML 中绑定，再转发给适配器：
+给 Canvas node 写属性不会自动收到小程序触摸事件。必须在 WXML 中绑定，再转发给适配器（`adaptForMiniProgram` 的 `touchEventHandlers` 内部已准备好处理器表，无需先调用 `bindTouchEvents`）：
 
 ```xml
 <canvas
@@ -232,8 +236,12 @@ CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单�
 ## 已知限制
 
 - 仅面向微信小程序 WebGL2 Canvas，不支持 WebGPU、WebXR 和浏览器完整 DOM。
+- WebGL2 需要基础库 `>= 2.24.0`；更低基础库上 `getContext('webgl')` 返回 WebGL1 上下文，`inspectWebGL()` 会如实报告。
+- iOS 切后台/锁屏后 WebGL 上下文可能被系统销毁。页面 `onShow` 时调用 `adapter.canvas.recoverContext()` 可尝试恢复（重新获取上下文并分发 `webglcontextrestored` 让 three.js 重建状态）。
+- 本地文件读取（`file://`、`wxfile://`、`wx.env.USER_DATA_PATH` 前缀）仅限小程序沙箱（`usr`/`store` 目录），拒绝路径遍历。开发者工具中本地路径前缀为 `http://usr`，已自动兼容。
+- `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。
 - DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
-- `checkCompatibility()` 的 WebGL2 结论基于基础库版本；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
+- `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
 - 多页面或多 Canvas 可用，但仍建议每页独立创建并在 `onUnload` 调用 `dispose()`。
 
 ## 贡献

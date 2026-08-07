@@ -8,18 +8,51 @@
  * 代理所有 WebGL 方法调用
  */
 class WebGL2RenderingContextWrapper {
-  constructor(gl, canvas = null) {
+  constructor(gl, canvas = null, isWebGL2 = true) {
     if (!gl) {
       throw new TypeError('A WebGL context is required');
     }
 
     this._gl = gl;
     this._canvas = canvas;
+    this._isWebGL2 = Boolean(isWebGL2);
     this._extensions = new Map();
+    this._maxTextureSize = null;
+    this._proxiedNames = [];
+
+    // 读取最大纹理尺寸，用于超限贴图预警
+    try {
+      if (gl.MAX_TEXTURE_SIZE !== undefined) {
+        this._maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) || null;
+      }
+    } catch {
+      this._maxTextureSize = null;
+    }
+
+    // three.js 通过 gl.constructor.name 判定 WebGL 版本（r160~r162），
+    // 这里伪装构造器名避免走错代码路径。instanceof 不受影响。
+    Object.defineProperty(this, 'constructor', {
+      configurable: true,
+      value: { name: this._isWebGL2 ? 'WebGL2RenderingContext' : 'WebGLRenderingContext' }
+    });
 
     // Mini-program contexts expose members inconsistently: some are own
     // properties, while others live on one of several prototypes.
     this._createPropertyProxies();
+    this._ensureFallbackMethods();
+  }
+
+  /**
+   * 兜底宿主缺失的上下文方法（部分小程序实现不提供）。
+   */
+  _ensureFallbackMethods() {
+    const gl = this._gl;
+    if (typeof gl.isContextLost !== 'function' && typeof this.isContextLost !== 'function') {
+      this.isContextLost = () => false;
+    }
+    if (typeof gl.getContextAttributes !== 'function' && typeof this.getContextAttributes !== 'function') {
+      this.getContextAttributes = () => ({});
+    }
   }
 
   _getPropertyNames() {
@@ -64,22 +97,44 @@ class WebGL2RenderingContextWrapper {
           getExtension: (...args) => this._getExtension(...args),
           getSupportedExtensions: (...args) => this._getSupportedExtensions(...args),
           getParameter: (...args) => this._getParameter(...args),
-          getShaderPrecisionFormat: (...args) => this._getShaderPrecisionFormat(...args)
+          getShaderPrecisionFormat: (...args) => this._getShaderPrecisionFormat(...args),
+          texImage2D: (...args) => {
+            this._checkOversizedTexture(args[args.length - 1]);
+            return Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument)));
+          },
+          texSubImage2D: (...args) => {
+            this._checkOversizedTexture(args[args.length - 1]);
+            return Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument)));
+          },
+          texImage3D: (...args) => {
+            this._checkOversizedTexture(args[args.length - 1]);
+            return Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument)));
+          },
+          texSubImage3D: (...args) => {
+            this._checkOversizedTexture(args[args.length - 1]);
+            return Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument)));
+          }
         };
 
         this[name] = specialMethods[name] || ((...args) =>
           Reflect.apply(value, gl, args.map(argument => this._unwrapArgument(argument))));
+        this._proxiedNames.push(name);
         return;
       }
 
+      // 常量属性只读（three.js 会写 drawingBufferColorSpace/unpackColorSpace）
+      const writable = new Set(['drawingBufferColorSpace', 'unpackColorSpace']);
       Object.defineProperty(this, name, {
         configurable: true,
         enumerable: true,
         get: () => gl[name],
-        set: nextValue => {
-          gl[name] = nextValue;
-        }
+        set: writable.has(name)
+          ? (nextValue) => {
+            gl[name] = nextValue;
+          }
+          : undefined
       });
+      this._proxiedNames.push(name);
     });
 
     Object.defineProperty(this, 'canvas', {
@@ -94,6 +149,36 @@ class WebGL2RenderingContextWrapper {
       configurable: true,
       get: () => gl.drawingBufferHeight || gl.canvas?.height || this._canvas?.height || 0
     });
+    this._proxiedNames.push('canvas', 'drawingBufferWidth', 'drawingBufferHeight');
+  }
+
+  /**
+   * 热替换底层原生上下文（iOS 切后台后系统可能销毁原上下文）。
+   * 返回是否替换成功；three.js 持有的 wrapper 引用不变，所有 GL 调用自动走新上下文。
+   */
+  _replaceContext(newGl) {
+    if (!newGl || newGl === this._gl) return false;
+
+    this._gl = newGl;
+    this._proxiedNames.forEach(name => {
+      try {
+        delete this[name];
+      } catch {
+        // 忽略不可删除的属性
+      }
+    });
+    this._proxiedNames = [];
+    this._extensions.clear();
+    try {
+      if (newGl.MAX_TEXTURE_SIZE !== undefined) {
+        this._maxTextureSize = newGl.getParameter(newGl.MAX_TEXTURE_SIZE) || null;
+      }
+    } catch {
+      this._maxTextureSize = null;
+    }
+    this._createPropertyProxies();
+    this._ensureFallbackMethods();
+    return true;
   }
 
   // 获取扩展（增强版）
@@ -163,6 +248,13 @@ class WebGL2RenderingContextWrapper {
     Object.keys(extension).forEach(key => {
       if (typeof extension[key] === 'number') {
         wrapper[key] = extension[key];
+      }
+    });
+
+    // 方法绑定到原始扩展对象，避免调用时 this 错绑（Illegal invocation）
+    Object.getOwnPropertyNames(extension).forEach(key => {
+      if (typeof extension[key] === 'function') {
+        wrapper[key] = (...args) => Reflect.apply(extension[key], extension, args);
       }
     });
 
@@ -244,7 +336,22 @@ class WebGL2RenderingContextWrapper {
 
   // 工具方法：检查是否为 WebGL2 上下文
   get isWebGL2() {
-    return true;
+    return this._isWebGL2;
+  }
+
+  // 超限贴图预警：three.js 会用 2D canvas 缩放超大贴图，小程序环境没有
+  // 可用的 2D canvas（getContext('2d') 返回 null），提前警告避免难排查的崩溃。
+  _checkOversizedTexture(image) {
+    if (!image || typeof image !== 'object' || !image._miniProgramImage) return;
+    const img = image._miniProgramImage;
+    if (typeof img.width !== 'number' || typeof img.height !== 'number') return;
+    if (this._maxTextureSize && (img.width > this._maxTextureSize || img.height > this._maxTextureSize)) {
+      console.warn(
+        `[threejs-miniprogram-adapter] Texture size ${img.width}x${img.height} exceeds ` +
+        `maxTextureSize ${this._maxTextureSize}; three.js needs a 2D canvas to resize it, ` +
+        'which is unavailable in mini program. The upload may fail — please downscale the image.'
+      );
+    }
   }
 }
 

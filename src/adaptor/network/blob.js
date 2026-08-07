@@ -51,7 +51,8 @@ class Blob {
     let currentOffset = 0;
 
     for (const part of this._parts) {
-      const partSize = part.length || part.size;
+      // Uint8Array 用 length、Blob 用 size；空 part（length=0）不得产生 NaN
+      const partSize = part.length !== undefined ? part.length : part.size;
 
       if (currentOffset + partSize <= start) {
         currentOffset += partSize;
@@ -266,6 +267,7 @@ class FileReader extends EventTarget {
       this.onabort();
     }
     this.dispatchEvent({ type: 'abort' });
+    this._callOnLoadEnd();
   }
 
   // 私有方法

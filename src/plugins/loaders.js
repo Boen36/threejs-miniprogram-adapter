@@ -95,10 +95,12 @@ function enhanceTextureLoader(THREE) {
     return;
   }
 
-  const originalLoad = THREE.TextureLoader.prototype.load;
-
   THREE.TextureLoader.prototype.load = function(url, onLoad, onProgress, onError) {
+    const manager = this.manager || THREE.DefaultLoadingManager;
     const resolvedUrl = resolvePath(url);
+
+    // 接入 LoadingManager：没有 itemStart/itemEnd 时，onLoad/onProgress 门控会永久挂起
+    manager.itemStart(resolvedUrl);
 
     // 创建小程序图片
     const image = createImageElement();
@@ -109,11 +111,14 @@ function enhanceTextureLoader(THREE) {
 
     image.onload = () => {
       texture.needsUpdate = true;
+      manager.itemEnd(resolvedUrl);
       if (onLoad) onLoad(texture);
     };
 
     image.onerror = (err) => {
       console.error('Failed to load texture:', url, err);
+      manager.itemError?.(resolvedUrl);
+      manager.itemEnd(resolvedUrl);
       if (onError) onError(err);
     };
 
@@ -132,10 +137,7 @@ function enhanceGLTFLoader(THREE) {
     return;
   }
 
-  const originalSetDRACOLoader = THREE.GLTFLoader.prototype.setDRACOLoader;
-  const originalSetKTX2Loader = THREE.GLTFLoader.prototype.setKTX2Loader;
-
-  // 确保路径处理正确
+  // 确保路径处理正确（DRACO/KTX2 走小程序专用流程，此处不处理）
   const originalLoad = THREE.GLTFLoader.prototype.load;
   THREE.GLTFLoader.prototype.load = function(url, onLoad, onProgress, onError) {
     const resolvedUrl = resolvePath(url);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { URL, URLSearchParams, createObjectURL } from '../src/adaptor/media/url.js';
+import { URL, URLSearchParams, createObjectURL, getBlobFromURL } from '../src/adaptor/media/url.js';
 
 describe('URL parsing', () => {
   test('parses an absolute https URL into its components', () => {
@@ -142,5 +142,14 @@ describe('createObjectURL fallback', () => {
   test('returns a blob: id when wx is unavailable', () => {
     const url = createObjectURL({ size: 3 });
     assert.match(url, /^blob:miniapp\/\d+$/);
+  });
+
+  test('evicts the oldest object URL beyond the cap', () => {
+    const first = createObjectURL({ size: 1 });
+    for (let i = 0; i < 55; i++) {
+      createObjectURL({ size: 1 });
+    }
+    // 超过 MAX_OBJECT_URLS(50) 后，最早的 URL 被 LRU 淘汰
+    assert.equal(getBlobFromURL(first), null);
   });
 });

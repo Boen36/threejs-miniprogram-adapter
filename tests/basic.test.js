@@ -122,11 +122,18 @@ describe('compatibility checks', () => {
   test('compares SDK versions numerically', () => {
     globalThis.wx = {
       createSelectorQuery() {},
-      getSystemInfoSync: () => ({ SDKVersion: '2.10.0', platform: 'devtools', version: '1' })
+      getSystemInfoSync: () => ({ SDKVersion: '2.30.0', platform: 'devtools', version: '1' })
     };
     const report = checkCompatibility();
     assert.equal(report.compatible, true);
     assert.equal(report.warnings.length, 0);
+
+    // WebGL2 需要基础库 >= 2.24.0（低于该版本应给出警告）
+    globalThis.wx.getSystemInfoSync = () => ({ SDKVersion: '2.10.0', platform: 'devtools', version: '1' });
+    const older = checkCompatibility();
+    assert.equal(older.compatible, true);
+    assert.equal(older.warnings.length, 1);
+    assert.match(older.warnings[0], /2\.24\.0/);
   });
 
   test('marks missing required wx APIs as incompatible', () => {
@@ -222,7 +229,11 @@ describe('event compatibility', () => {
     result.touchEventHandlers.touchend({ touches: [], changedTouches: [moved] });
     controls.update();
 
-    assert.notDeepEqual(camera.position.toArray(), [0, 0, 5]);
+    // 右移 + 下移应旋转相机：偏离 +Z 轴且保持轨道半径（含 y 分量）
+    const [x, y, z] = camera.position.toArray();
+    assert.ok(Math.abs(x) > 0.1, 'camera should have rotated around Y');
+    assert.ok(Math.abs(Math.hypot(x, y, z) - 5) < 1e-6, 'orbit radius should be preserved');
+    assert.ok(z < 5, 'camera should no longer sit on the +Z axis');
     controls.dispose();
     result.dispose();
   });
@@ -258,6 +269,12 @@ describe('network primitives', () => {
     assert.deepEqual(written.get(url), [0, 128, 255]);
     revokeObjectURL(url);
     assert.equal(written.has(url), false);
+  });
+
+  test('slices blobs with empty leading parts without corruption', async () => {
+    const blob = new Blob([new Uint8Array(0), new Uint8Array([1, 2, 3])]);
+    const sliced = blob.slice(1);
+    assert.deepEqual([...new Uint8Array(await sliced.arrayBuffer())], [2, 3]);
   });
 });
 

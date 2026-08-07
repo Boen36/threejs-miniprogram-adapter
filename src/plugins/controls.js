@@ -3,8 +3,6 @@
  * 为 three.js 的各种 Controls 提供小程序触摸事件支持
  */
 
-import { bindTouchEvents } from '../adaptor/events/bridge.js';
-
 /**
  * 适配 OrbitControls 到小程序
  * @param {Object} THREE - three.js 实例
@@ -15,32 +13,8 @@ function adaptOrbitControls(THREE) {
     return;
   }
 
-  // OrbitControls 使用 Pointer Events，应该在适配器的事件桥接后自动工作
-  // 这里添加一些小程序特定的优化
-
-  // 添加小程序特定的初始化
-  THREE.OrbitControls.prototype.initialize = function() {
-    // 确保 canvas 支持指针事件
-    const domElement = this.domElement;
-
-    if (domElement && !domElement._touchHandlers) {
-      // 如果 canvas 没有绑定触摸事件，尝试重新绑定
-      bindTouchEvents(domElement);
-    }
-  };
-
-  // 覆盖 connect 方法以确保正确连接
-  if (THREE.OrbitControls.prototype.connect) {
-    const originalConnect = THREE.OrbitControls.prototype.connect;
-    THREE.OrbitControls.prototype.connect = function(domElement) {
-      originalConnect.call(this, domElement);
-
-      // 小程序优化：确保触摸事件正确传递
-      if (domElement && domElement._miniProgramCanvas) {
-        // 已经通过适配器绑定
-      }
-    };
-  }
+  // OrbitControls 基于 Pointer Events 工作，适配器的事件桥
+  // （WXML touch* -> PointerEvent）已提供所需输入，无需额外适配。
 }
 
 /**
@@ -290,18 +264,20 @@ function adaptAllControls(THREE) {
 function createGestureControls(camera, domElement, options = {}) {
   const controls = createTouchControls(camera, domElement, options);
 
-  // 添加双击重置
+  // 添加双击重置（只统计同一指针的两次点击）
   let lastTapTime = 0;
+  let lastTapPointerId = null;
   const onPointerDown = (e) => {
     const currentTime = Date.now();
     const tapLength = currentTime - lastTapTime;
-    if (tapLength < 300 && tapLength > 0) {
+    if (tapLength < 300 && tapLength > 0 && e.pointerId === lastTapPointerId) {
       // 双击，重置视角
       if (options.onDoubleTap) {
         options.onDoubleTap();
       }
     }
     lastTapTime = currentTime;
+    lastTapPointerId = e.pointerId;
   };
   if (domElement) {
     domElement.addEventListener('pointerdown', onPointerDown);

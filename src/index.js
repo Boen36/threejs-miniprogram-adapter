@@ -258,8 +258,8 @@ function checkCompatibility() {
       report.info.platform = info.platform;
       report.info.version = info.version;
 
-      if (compareVersions(info.SDKVersion, '2.9.0') < 0) {
-        report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.9.0+`);
+      if (compareVersions(info.SDKVersion, '2.24.0') < 0) {
+        report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.24.0+`);
       }
     } catch (error) {
       report.compatible = false;

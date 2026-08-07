@@ -18,10 +18,10 @@
 
 - `src/index.js` — 主入口：`adaptForMiniProgram`（包装 canvas → 注入 polyfill → 能力探测延迟到 `inspectWebGL()`，避免在 `THREE.WebGLRenderer` 前锁定上下文属性）、`quickAdapt`、`checkCompatibility`、`waitForCanvas`。
 - `src/adaptor/` — 环境层：
-  - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。canvas 的 `getContext` 永远返回 webgl2；video/audio 是模拟实现，VideoTexture 默认不可用。
-  - `events/` — Event/EventTarget、触摸→Pointer 转换（`pointer-event.js`）、原生 canvas 触摸桥（`bridge.js`，直接改原生对象属性，注意脆弱性）。
-  - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析。
-  - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理）、扩展与能力检测。
+  - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video/audio 是模拟实现，VideoTexture 默认不可用。
+  - `events/` — Event/EventTarget、触摸→Pointer 转换（`pointer-event.js`）、WXML 触摸桥（`bridge.js`：只维护处理器表，不直赋原生对象 — 微信无"赋属性即事件"机制）。
+  - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析；本地文件读取限沙箱（`file://`/`wxfile://`/`USER_DATA_PATH` 前缀，拒绝 `..`）。
+  - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理，`constructor.name` 伪装为 WebGL2RenderingContext 供 three 判定，`_replaceContext` 支持热替换）、扩展与能力检测。
 - `src/plugins/loaders.js` — 绕过 three.js 图片路径、走 wx 图片层；`createFileLoader`/`resolvePath`/各 `enhance*Loader`。
 - `src/plugins/controls.js` — 真正有用的是 `createTouchControls`/`createGestureControls`；`adaptOrbitControls` 等多数是空壳，OrbitControls 靠触摸→Pointer 桥工作。
 - `types/index.d.ts` — 公共类型。运行时导出与 .d.ts 必须同步（曾有漂移，已修复）。
@@ -37,7 +37,9 @@
 ## 已知限制与坑
 
 - DRACO 压缩 glTF 不支持（three 的 Worker 模型与微信 Worker 不兼容），见 Issue #1。KTX2/WebGPU/WebXR 不支持。
-- `bindTouchEvents` 会直接改写原生 canvas 对象（bridge.js），无冻结保护；`getContext('webgl')` 静默返回 webgl2 上下文。
+- WebGL2 需要基础库 >= 2.24.0（`checkCompatibility`/`detectEnvironment` 阈值已按此设置）；`getContext('webgl')` 返回真实 WebGL1。
+- `bindTouchEvents` 只准备处理器表，触摸必须走 WXML `bindtouch*` → `touchEventHandlers` 转发。
+- iOS 切后台上下文可能被销毁：页面 `onShow` 调 `adapter.canvas.recoverContext()`（examples 三个页面已示范）。
 - `updateSize()` 只返回建议尺寸，不应用到 canvas/renderer（README 已声明）。
 - 尚未发布到 npm；README 安装说明目前用 GitHub 直装。
 - 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。

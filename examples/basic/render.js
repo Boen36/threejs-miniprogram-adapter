@@ -75,6 +75,7 @@ Page({
 
         renderer.render(scene, camera);
       };
+      this._animate = animate;
 
       animate();
 
@@ -94,6 +95,23 @@ Page({
         content: 'WebGL 初始化失败: ' + error.message,
         showCancel: false
       });
+    }
+  },
+
+  onHide() {
+    // 后台暂停渲染，避免无效绘制
+    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
+      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
+      this._animationFrame = null;
+    }
+  },
+
+  onShow() {
+    // iOS 切后台可能销毁 WebGL 上下文，回前台时尝试恢复
+    if (!this._adapter) return;
+    this._adapter.canvas.recoverContext();
+    if (!this._animationFrame && this._animate) {
+      this._animate();
     }
   },
 

@@ -18,6 +18,7 @@ class HTMLImageElement extends HTMLElement {
     this._loading = false;
     this._image = null;
     this._imageFactory = imageFactory;
+    this._loadToken = 0;
   }
 
   get src() {
@@ -29,6 +30,8 @@ class HTMLImageElement extends HTMLElement {
     this._src = value;
     this._complete = false;
     this._loading = true;
+    // 使进行中的旧请求失效，避免旧图完成后覆盖新 src 的状态
+    this._loadToken++;
 
     if (!value) {
       this._handleError(new Error('Empty source'));
@@ -40,6 +43,9 @@ class HTMLImageElement extends HTMLElement {
   }
 
   _loadImage(src) {
+    // 记录本次请求令牌：旧请求完成时不得覆盖新请求的状态
+    const token = this._loadToken;
+
     // 使用小程序的 createImage
     let img;
     if (this._imageFactory) {
@@ -57,6 +63,7 @@ class HTMLImageElement extends HTMLElement {
     img.crossOrigin = this._crossOrigin || 'anonymous';
 
     img.onload = () => {
+      if (token !== this._loadToken) return; // 旧请求，忽略
       this._image = img;
       this._width = img.width || 0;
       this._height = img.height || 0;
@@ -72,6 +79,7 @@ class HTMLImageElement extends HTMLElement {
     };
 
     img.onerror = (err) => {
+      if (token !== this._loadToken) return; // 旧请求，忽略
       this._complete = false;
       this._loading = false;
       this._handleError(err || new Error('Failed to load image'));

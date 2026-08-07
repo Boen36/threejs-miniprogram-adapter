@@ -191,7 +191,7 @@ function detectEnvironment() {
   return {
     isMiniProgram: typeof wx !== 'undefined',
     platform: info?.platform || 'unknown',
-    supportWebGL2: Boolean(info?.SDKVersion && isVersionAtLeast(info.SDKVersion, '2.9.0'))
+    supportWebGL2: Boolean(info?.SDKVersion && isVersionAtLeast(info.SDKVersion, '2.24.0'))
   };
 }
 

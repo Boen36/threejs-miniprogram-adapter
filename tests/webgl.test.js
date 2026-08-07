@@ -6,6 +6,7 @@ import {
   checkWebGLSupport,
   getWebGLCapabilities
 } from '../src/adaptor/webgl/webgl2-context.js';
+import { HTMLCanvasElement } from '../src/adaptor/dom/canvas.js';
 
 /** 构建一个可控的 mock WebGL2 上下文。 */
 function createMockGL() {
@@ -59,19 +60,72 @@ describe('WebGL2RenderingContextWrapper', () => {
 
     wrapper.clearColor(0.1, 0.2, 0.3, 1);
     wrapper.clear(0x4000);
-    assert.deepEqual(calls[0], ['clearColor', 0.1, 0.2, 0.3, 1]);
-    assert.deepEqual(calls[1], ['clear', 0x4000]);
+    assert.deepEqual(calls.find(call => call[0] === 'clearColor'), ['clearColor', 0.1, 0.2, 0.3, 1]);
+    assert.deepEqual(calls.find(call => call[0] === 'clear'), ['clear', 0x4000]);
   });
 
-  test('proxies constant properties with get and set', () => {
+  test('exposes constructor.name for three.js version detection', () => {
     const { gl } = createMockGL();
+    const wrapper = new WebGL2RenderingContextWrapper(gl);
+    assert.equal(wrapper.constructor.name, 'WebGL2RenderingContext');
+    assert.equal(wrapper.isWebGL2, true);
+    assert.ok(wrapper instanceof WebGL2RenderingContextWrapper); // instanceof 不受伪装影响
+
+    const webgl1 = new WebGL2RenderingContextWrapper(gl, null, false);
+    assert.equal(webgl1.constructor.name, 'WebGLRenderingContext');
+    assert.equal(webgl1.isWebGL2, false);
+  });
+
+  test('warns when an adapted image exceeds maxTextureSize', () => {
+    const gl = {
+      MAX_TEXTURE_SIZE: 0x0d33,
+      getParameter(parameter) {
+        if (parameter === this.MAX_TEXTURE_SIZE) return 4096;
+        return null;
+      },
+      texImage2D() {}
+    };
+    const wrapper = new WebGL2RenderingContextWrapper(gl);
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (message) => warnings.push(message);
+    try {
+      const oversized = { _miniProgramImage: { width: 8192, height: 8192 } };
+      wrapper.texImage2D(0x0de1, 0, 0x1908, 1, 1, 0, 0x1908, 0x1401, oversized);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /maxTextureSize/);
+
+      // 正常尺寸不警告
+      const normal = { _miniProgramImage: { width: 512, height: 512 } };
+      wrapper.texImage2D(0x0de1, 0, 0x1908, 1, 1, 0, 0x1908, 0x1401, normal);
+      assert.equal(warnings.length, 1);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test('proxies constant properties read-only and forwards writes to whitelisted ones', () => {
+    const { gl } = createMockGL();
+    // 白名单属性（three.js 写入）在原生上下文上存在时被代理并转发
+    gl.drawingBufferColorSpace = 'srgb';
     const wrapper = new WebGL2RenderingContextWrapper(gl);
 
     assert.equal(wrapper.VERSION, 0x1f02);
     assert.equal(wrapper.MAX_TEXTURE_SIZE, 0x0d33);
 
+    // 常量只读：写入不生效（严格模式抛 TypeError，非严格静默失败）
     gl.MAX_TEXTURE_SIZE = 2048;
     assert.equal(wrapper.MAX_TEXTURE_SIZE, 2048);
+    try {
+      wrapper.MAX_TEXTURE_SIZE = 9999;
+    } catch {
+      // 严格模式（ESM）下对只读 accessor 赋值抛 TypeError，行为等价
+    }
+    assert.equal(wrapper.MAX_TEXTURE_SIZE, 2048);
+
+    // 白名单属性仍可转发
+    wrapper.drawingBufferColorSpace = 'display-p3';
+    assert.equal(gl.drawingBufferColorSpace, 'display-p3');
   });
 
   test('unwraps adapted image and canvas arguments', () => {
@@ -144,8 +198,90 @@ describe('WebGL2RenderingContextWrapper', () => {
   });
 });
 
-describe('WebGL helpers', () => {
-  test('checkWebGLSupport reports unsupported when no context', () => {
+describe('context recovery', () => {
+  function makeGl(label) {
+    const calls = [];
+    return {
+      label,
+      calls,
+      MAX_TEXTURE_SIZE: 0x0d33,
+      VERSION: 0x1f02,
+      getParameter(parameter) {
+        calls.push(['getParameter', parameter]);
+        return null;
+      },
+      clear() {
+        calls.push(['clear']);
+      }
+    };
+  }
+
+  test('_replaceContext proxies calls to the new context', () => {
+    const gl1 = makeGl('old');
+    const wrapper = new WebGL2RenderingContextWrapper(gl1);
+
+    const gl2 = makeGl('new');
+    assert.equal(wrapper._replaceContext(gl2), true);
+    assert.equal(wrapper._rawContext, gl2);
+    assert.equal(wrapper.isWebGL2, true);
+    assert.equal(wrapper._replaceContext(gl2), false); // 同实例不重复替换
+
+    wrapper.clear();
+    assert.equal(gl1.calls.some(call => call[0] === 'clear'), false);
+    assert.ok(gl2.calls.some(call => call[0] === 'clear'));
+  });
+
+  test('recoverContext swaps in a fresh native context', () => {
+    let currentGl = makeGl('old');
+    const native = { getContext: () => currentGl };
+    const canvas = new HTMLCanvasElement(native);
+    const wrapper = canvas.getContext('webgl2');
+    const events = [];
+    canvas.addEventListener('webglcontextrestored', () => events.push('restored'));
+    canvas.addEventListener('webglcontextlost', () => events.push('lost'));
+
+    wrapper.clear();
+    assert.ok(currentGl.calls.some(call => call[0] === 'clear'));
+
+    // 系统销毁原上下文后，getContext 返回新实例
+    currentGl = makeGl('new');
+    assert.equal(canvas.recoverContext(), true);
+    assert.deepEqual(events, ['restored']);
+
+    wrapper.clear();
+    assert.ok(currentGl.calls.some(call => call[0] === 'clear'));
+  });
+
+  test('recoverContext reports loss when the context cannot be recreated', () => {
+    let destroyed = false;
+    const native = {
+      getContext: () => (destroyed ? null : makeGl('old'))
+    };
+    const canvas = new HTMLCanvasElement(native);
+    canvas.getContext('webgl2');
+    const events = [];
+    canvas.addEventListener('webglcontextrestored', () => events.push('restored'));
+    canvas.addEventListener('webglcontextlost', () => events.push('lost'));
+
+    destroyed = true;
+    assert.equal(canvas.recoverContext(), false);
+    assert.deepEqual(events, ['lost']);
+  });
+
+  test('recoverContext dispatches restored when the context is intact', () => {
+    const gl = makeGl('same');
+    const native = { getContext: () => gl };
+    const canvas = new HTMLCanvasElement(native);
+    canvas.getContext('webgl2');
+    const events = [];
+    canvas.addEventListener('webglcontextrestored', () => events.push('restored'));
+
+    assert.equal(canvas.recoverContext(), true);
+    assert.deepEqual(events, ['restored']);
+  });
+});
+
+describe('WebGL helpers', () => {  test('checkWebGLSupport reports unsupported when no context', () => {
     const canvas = {
       getContext(type) {
         assert.equal(type, 'webgl2');

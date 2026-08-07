@@ -4,6 +4,7 @@
  */
 
 import { HTMLElement } from './element.js';
+import { Event } from '../events/event.js';
 import { WebGL2RenderingContextWrapper } from '../webgl/webgl2-context.js';
 
 class HTMLCanvasElement extends HTMLElement {
@@ -24,11 +25,16 @@ class HTMLCanvasElement extends HTMLElement {
 
   _syncSize() {
     if (this._canvas) {
-      // 小程序 canvas 的宽高通常是从布局获取的
-      const info = typeof wx !== 'undefined' && wx.getSystemInfoSync ?
-        wx.getSystemInfoSync() : { windowWidth: 375, windowHeight: 667 };
-      this._width = this._canvas.width || info.windowWidth;
-      this._height = this._canvas.height || info.windowHeight;
+      // 小程序 canvas 的宽高通常是从布局获取的；
+      // wx.getSystemInfoSync 自 2.20.1 起停维护，可能返回空对象，需兜底
+      let info = {};
+      try {
+        info = (typeof wx !== 'undefined' && wx.getSystemInfoSync) ? wx.getSystemInfoSync() : {};
+      } catch {
+        info = {};
+      }
+      this._width = this._canvas.width || info.windowWidth || 375;
+      this._height = this._canvas.height || info.windowHeight || 667;
     }
   }
 
@@ -76,29 +82,46 @@ class HTMLCanvasElement extends HTMLElement {
 
     this._contextType = contextType;
 
-    switch (contextType) {
-      case 'webgl2':
-      case 'webgl':
-        // 小程序必须使用 'webgl2' 类型获取 WebGL2 上下文
-        const gl = this._canvas.getContext('webgl2', {
-          alpha: contextAttributes?.alpha !== false,
-          depth: contextAttributes?.depth !== false,
-          stencil: contextAttributes?.stencil === true,
-          antialias: contextAttributes?.antialias === true,
-          premultipliedAlpha: contextAttributes?.premultipliedAlpha !== false,
-          preserveDrawingBuffer: contextAttributes?.preserveDrawingBuffer === true,
-          powerPreference: contextAttributes?.powerPreference || 'default',
-          failIfMajorPerformanceCaveat: contextAttributes?.failIfMajorPerformanceCaveat === true,
-          ...contextAttributes
-        });
+    // 构造传给原生 getContext 的属性（默认值与浏览器一致）
+    const requestContext = (type) => this._canvas.getContext(type, {
+      alpha: contextAttributes?.alpha !== false,
+      depth: contextAttributes?.depth !== false,
+      stencil: contextAttributes?.stencil === true,
+      antialias: contextAttributes?.antialias === true,
+      premultipliedAlpha: contextAttributes?.premultipliedAlpha !== false,
+      preserveDrawingBuffer: contextAttributes?.preserveDrawingBuffer === true,
+      powerPreference: contextAttributes?.powerPreference || 'default',
+      failIfMajorPerformanceCaveat: contextAttributes?.failIfMajorPerformanceCaveat === true,
+      ...contextAttributes
+    });
 
+    switch (contextType) {
+      case 'webgl2': {
+        // WebGL2 需要基础库 >= 2.24.0；失败时不自动回退 WebGL1，
+        // 因为调用方（three r163+）假定拿到的是 WebGL2 上下文。
+        const gl = requestContext('webgl2');
         if (!gl) {
-          console.error('Failed to get WebGL2 context');
+          console.error(
+            '[threejs-miniprogram-adapter] Failed to get WebGL2 context. ' +
+            'WebGL2 requires base library >= 2.24.0. On older base libraries, ' +
+            "request a 'webgl' (WebGL1) context instead."
+          );
           return null;
         }
-
-        this._context = new WebGL2RenderingContextWrapper(gl, this);
+        this._context = new WebGL2RenderingContextWrapper(gl, this, true);
         return this._context;
+      }
+
+      case 'webgl': {
+        // 真实 WebGL1 请求，不再映射到 webgl2（three r160 的回退链依赖此分支）
+        const gl = requestContext('webgl');
+        if (!gl) {
+          console.error('[threejs-miniprogram-adapter] Failed to get WebGL context');
+          return null;
+        }
+        this._context = new WebGL2RenderingContextWrapper(gl, this, false);
+        return this._context;
+      }
 
       case '2d':
         // 小程序 2D 上下文
@@ -197,6 +220,44 @@ class HTMLCanvasElement extends HTMLElement {
   get _miniProgramCanvas() {
     return this._canvas;
   }
+
+  /**
+   * 恢复 WebGL 上下文（iOS 切后台/锁屏后系统可能销毁原上下文）。
+   * 页面 onShow 时调用：重新获取上下文并热替换到 wrapper，然后分发
+   * webglcontextrestored 让 three.js 重建 GL 状态。失败时分发
+   * webglcontextlost。返回是否成功恢复。
+   */
+  recoverContext() {
+    if (!this._contextType || this._contextType === '2d' || !this._canvas || !this._context) {
+      return false;
+    }
+    if (typeof this._context._replaceContext !== 'function') {
+      return false;
+    }
+
+    let gl = null;
+    try {
+      gl = this._canvas.getContext(this._contextType);
+    } catch {
+      gl = null;
+    }
+
+    // 使用真实 Event 实例：three.js 的 context lost 处理器会调用 preventDefault()
+    if (!gl) {
+      this.dispatchEvent(new Event('webglcontextlost'));
+      return false;
+    }
+
+    if (gl === this._context._rawContext) {
+      // 上下文未销毁，仍分发给 three 重建状态
+      this.dispatchEvent(new Event('webglcontextrestored'));
+      return true;
+    }
+
+    const replaced = this._context._replaceContext(gl);
+    this.dispatchEvent(new Event(replaced ? 'webglcontextrestored' : 'webglcontextlost'));
+    return replaced;
+  }
 }
 
 // 2D 上下文包装器
@@ -214,7 +275,7 @@ class CanvasRenderingContext2DWrapper {
       'isPointInPath', 'isPointInStroke', 'fillText', 'strokeText',
       'measureText', 'drawImage', 'createImageData', 'getImageData',
       'putImageData', 'getLineDash', 'setLineDash', 'drawFocusIfNeeded',
-      'scrollPathIntoView', 'setTransform'
+      'scrollPathIntoView'
     ];
 
     methods.forEach(method => {

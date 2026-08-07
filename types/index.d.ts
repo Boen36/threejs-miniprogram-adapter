@@ -50,11 +50,23 @@ export interface AdaptOptions {
   webglContextAttributes?: WebGLContextAttributes;
 }
 
+/**
+ * 适配后的 canvas：在标准 HTMLCanvasElement 之上提供小程序特有的恢复方法。
+ */
+export interface AdaptedCanvas extends HTMLCanvasElement {
+  /**
+   * 恢复被系统销毁的 WebGL 上下文（iOS 切后台/锁屏后页面 onShow 时调用）。
+   * 重新获取上下文并分发 webglcontextrestored 让 three.js 重建状态；
+   * 失败时返回 false 并分发 webglcontextlost。
+   */
+  recoverContext(): boolean;
+}
+
 export interface AdaptResult {
   /**
    * 适配后的 HTMLCanvasElement
    */
-  canvas: HTMLCanvasElement;
+  canvas: AdaptedCanvas;
 
   /**
    * 原始小程序 canvas
@@ -232,11 +244,13 @@ export function installPolyfills(
 
 /**
  * 绑定触摸事件
+ * 注意：微信宿主没有"赋属性即注册事件"机制，触摸事件必须通过
+ * WXML 的 bindtouch* 转发到 createTouchEventHandlers()。
  */
 export function bindTouchEvents(
   canvas: HTMLCanvasElement,
-  options?: { capture?: boolean; passive?: boolean }
-): () => void;
+  options?: { capture?: boolean; passive?: boolean; debug?: boolean }
+): (() => void) | undefined;
 
 /**
  * 解绑触摸事件
@@ -248,7 +262,10 @@ export function unbindTouchEvents(canvas: HTMLCanvasElement): void;
  */
 export function createAdaptedCanvas(
   miniProgramCanvas: any,
-  options?: { bindTouchEvents?: boolean }
+  options?: {
+    bindTouchEvents?: boolean;
+    touchOptions?: { capture?: boolean; passive?: boolean; debug?: boolean };
+  }
 ): HTMLCanvasElement;
 
 /**

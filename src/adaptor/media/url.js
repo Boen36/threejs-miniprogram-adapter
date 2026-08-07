@@ -7,6 +7,36 @@
 const objectURLs = new Map();
 let objectURLCounter = 0;
 
+// 对象 URL 上限：数量与估算字节双上限，防止长时间运行的 Map 与临时文件无限增长
+const MAX_OBJECT_URLS = 50;
+const MAX_OBJECT_URL_BYTES = 50 * 1024 * 1024; // 50MB
+
+/**
+ * 淘汰最旧的对象 URL（LRU），数量或估算字节超过上限时自动 revoke。
+ */
+function evictOldestIfNeeded() {
+  let totalBytes = 0;
+  objectURLs.forEach(stored => {
+    totalBytes += stored.size || 0;
+  });
+
+  while (objectURLs.size > MAX_OBJECT_URLS || totalBytes > MAX_OBJECT_URL_BYTES) {
+    let oldestKey = null;
+    let oldestCreated = Infinity;
+    let oldestSize = 0;
+    objectURLs.forEach((stored, key) => {
+      if (stored.created < oldestCreated) {
+        oldestCreated = stored.created;
+        oldestKey = key;
+        oldestSize = stored.size || 0;
+      }
+    });
+    if (oldestKey === null) break;
+    totalBytes -= oldestSize;
+    revokeObjectURL(oldestKey);
+  }
+}
+
 /**
  * 创建对象 URL
  * 在小程序中，这会创建一个临时文件路径或使用 base64 数据 URL
@@ -26,8 +56,12 @@ function createObjectURL(blob) {
   // 存储 blob 数据
   objectURLs.set(id, {
     blob: blob,
+    size: blob.size || 0,
     created: Date.now()
   });
+
+  // 数量/容量超限时淘汰最旧项（含其临时文件）
+  evictOldestIfNeeded();
 
   // 如果是小程序环境，尝试写入临时文件
   if (typeof wx !== 'undefined' && wx.getFileSystemManager) {
@@ -246,10 +280,8 @@ class URLSearchParams {
             const eq = pair.indexOf('=');
             const rawKey = eq === -1 ? pair : pair.slice(0, eq);
             const rawValue = eq === -1 ? '' : pair.slice(eq + 1);
-            const key = decodeSearchParam(rawKey);
-            if (key) {
-              this.append(key, decodeSearchParam(rawValue));
-            }
+            // 规范允许空 key（如 '=1'），不做过滤
+            this.append(decodeSearchParam(rawKey), decodeSearchParam(rawValue));
           });
         }
       } else if (init instanceof URLSearchParams) {
