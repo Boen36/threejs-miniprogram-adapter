@@ -9,3 +9,7 @@ coverage/
 .env
 .env.local
 *.tgz
+
+# Reasonix agent tooling (local only)
+.reasonix/
+reasonix.toml

@@ -161,35 +161,6 @@ class Window {
 // 创建全局 window 实例
 const windowInstance = new Window();
 
-// URL 类实现
-class URL {
-  constructor(url, base) {
-    this.href = url;
-    this.protocol = 'https:';
-    this.host = '';
-    this.hostname = '';
-    this.port = '';
-    this.pathname = url;
-    this.search = '';
-    this.hash = '';
-    this.origin = '';
-  }
-
-  toString() {
-    return this.href;
-  }
-
-  static createObjectURL(blob) {
-    // 小程序不支持标准的 createObjectURL
-    console.warn('URL.createObjectURL is limited in mini program');
-    return blob;
-  }
-
-  static revokeObjectURL(url) {
-    // 小程序不支持标准的 revokeObjectURL
-  }
-}
-
 // 导出
-export { Window, URL };
+export { Window };
 export default windowInstance;

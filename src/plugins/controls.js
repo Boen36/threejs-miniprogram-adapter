@@ -292,7 +292,7 @@ function createGestureControls(camera, domElement, options = {}) {
 
   // 添加双击重置
   let lastTapTime = 0;
-  domElement.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     const currentTime = Date.now();
     const tapLength = currentTime - lastTapTime;
     if (tapLength < 300 && tapLength > 0) {
@@ -302,7 +302,18 @@ function createGestureControls(camera, domElement, options = {}) {
       }
     }
     lastTapTime = currentTime;
-  });
+  };
+  if (domElement) {
+    domElement.addEventListener('pointerdown', onPointerDown);
+  }
+
+  const originalDispose = controls.dispose;
+  controls.dispose = () => {
+    if (domElement) {
+      domElement.removeEventListener('pointerdown', onPointerDown);
+    }
+    originalDispose.call(controls);
+  };
 
   return controls;
 }

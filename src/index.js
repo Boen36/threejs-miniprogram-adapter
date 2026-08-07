@@ -17,9 +17,7 @@ import {
 } from './adaptor/index.js';
 import * as LoaderPlugins from './plugins/loaders.js';
 import * as ControlPlugins from './plugins/controls.js';
-
-// 版本信息
-const VERSION = '1.0.0';
+import { VERSION } from './version.js';
 
 function getGlobalObject() {
   if (typeof globalThis !== 'undefined') return globalThis;

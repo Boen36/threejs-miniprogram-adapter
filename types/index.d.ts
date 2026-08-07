@@ -284,6 +284,23 @@ export function checkMiniProgramLimitations(gl: WebGLRenderingContext): string[]
 // Loader 插件
 export namespace LoaderPlugins {
   function enhanceAllLoaders(THREE: any): void;
+  function enhanceTextureLoader(THREE: any): void;
+  function enhanceGLTFLoader(THREE: any): void;
+  function enhanceOBJLoader(THREE: any): void;
+  function enhanceMTLLoader(THREE: any): void;
+  function enhanceFBXLoader(THREE: any): void;
+  /** 创建适配小程序路径的 FileLoader（load 返回 Promise 风格回调）。 */
+  function createFileLoader(): {
+    load: (
+      url: string,
+      onLoad?: (buffer: ArrayBuffer) => void,
+      onProgress?: (event: any) => void,
+      onError?: (error: any) => void
+    ) => void;
+  };
+  /** 解析路径，处理小程序特有的路径格式。 */
+  function resolvePath(url: string): string;
+  function createCachedLoader(THREE: any, LoaderClass: any): any;
   function loadTextureFromBase64(
     THREE: any,
     base64Data: string,
@@ -298,37 +315,47 @@ export namespace LoaderPlugins {
   ): any;
 }
 
+export interface TouchControlsOptions {
+  enableRotate?: boolean;
+  enableZoom?: boolean;
+  enablePan?: boolean;
+  rotateSpeed?: number;
+  zoomSpeed?: number;
+  panSpeed?: number;
+  minDistance?: number;
+  maxDistance?: number;
+  minPolarAngle?: number;
+  maxPolarAngle?: number;
+  target?: { x: number; y: number; z: number };
+  onDoubleTap?: () => void;
+}
+
+export interface TouchControls {
+  update: () => void;
+  dispose: () => void;
+  setTarget: (x: number, y: number, z: number) => void;
+  setRadius: (r: number) => void;
+}
+
 // Controls 插件
 export namespace ControlPlugins {
   function adaptAllControls(THREE: any): void;
+  function adaptOrbitControls(THREE: any): void;
+  function adaptTrackballControls(THREE: any): void;
+  function adaptFlyControls(THREE: any): void;
+  function adaptFirstPersonControls(THREE: any): void;
+  function adaptPointerLockControls(THREE: any): void;
+  function adaptDeviceOrientationControls(THREE: any): void;
   function createTouchControls(
     camera: any,
     domElement: HTMLCanvasElement,
-    options?: {
-      enableRotate?: boolean;
-      enableZoom?: boolean;
-      enablePan?: boolean;
-      rotateSpeed?: number;
-      zoomSpeed?: number;
-      panSpeed?: number;
-      minDistance?: number;
-      maxDistance?: number;
-      minPolarAngle?: number;
-      maxPolarAngle?: number;
-      target?: { x: number; y: number; z: number };
-      onDoubleTap?: () => void;
-    }
-  ): {
-    update: () => void;
-    dispose: () => void;
-    setTarget: (x: number, y: number, z: number) => void;
-    setRadius: (r: number) => void;
-  };
+    options?: TouchControlsOptions
+  ): TouchControls;
   function createGestureControls(
     camera: any,
     domElement: HTMLCanvasElement,
-    options?: any
-  ): any;
+    options?: TouchControlsOptions
+  ): TouchControls;
 }
 
 // 版本号

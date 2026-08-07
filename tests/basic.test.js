@@ -260,3 +260,38 @@ describe('network primitives', () => {
     assert.equal(written.has(url), false);
   });
 });
+
+describe('controls plugins', () => {
+  test('createGestureControls removes its listeners on dispose', () => {
+    const listeners = new Map();
+    const domElement = {
+      addEventListener(type, fn) {
+        if (!listeners.has(type)) listeners.set(type, []);
+        listeners.get(type).push(fn);
+      },
+      removeEventListener(type, fn) {
+        const arr = listeners.get(type);
+        if (!arr) return;
+        const index = arr.indexOf(fn);
+        if (index !== -1) arr.splice(index, 1);
+      }
+    };
+    const camera = {
+      position: { x: 0, y: 0, z: 10, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      lookAt() {}
+    };
+
+    const controls = ControlPlugins.createGestureControls(camera, domElement, {
+      onDoubleTap: () => {}
+    });
+    // createTouchControls 注册 4 类 pointer 监听，createGestureControls 额外注册 1 个 pointerdown
+    assert.equal(listeners.get('pointerdown').length, 2);
+    assert.equal(listeners.get('pointermove').length, 1);
+
+    controls.dispose();
+    assert.equal(listeners.get('pointerdown').length, 0);
+    assert.equal(listeners.get('pointermove').length, 0);
+    assert.equal(listeners.get('pointerup').length, 0);
+    assert.equal(listeners.get('pointercancel').length, 0);
+  });
+});

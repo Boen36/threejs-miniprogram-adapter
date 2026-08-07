@@ -3,7 +3,7 @@
  * 整合所有适配层模块，提供全局环境注入
  */
 
-import { Window, URL } from './dom/window.js';
+import { Window } from './dom/window.js';
 import { Document, document } from './dom/document.js';
 import { Element, HTMLElement, CSSStyleDeclaration, DOMTokenList } from './dom/element.js';
 import { HTMLCanvasElement } from './dom/canvas.js';
@@ -20,6 +20,7 @@ import { WebGL2RenderingContextWrapper } from './webgl/webgl2-context.js';
 import { WebGLExtensions, detectWebGLExtensions, checkMiniProgramLimitations } from './webgl/extensions.js';
 import { URL as URLClass, URLSearchParams, createObjectURL, revokeObjectURL } from './media/url.js';
 import { AudioContext, Audio, HTMLAudioElement } from './media/audio.js';
+import { VERSION, PACKAGE_NAME, PACKAGE_DESCRIPTION } from '../version.js';
 
 /**
  * 全局 polyfills 配置
@@ -173,9 +174,9 @@ function createAdaptedCanvas(miniProgramCanvas, options = {}) {
  */
 function getVersion() {
   return {
-    version: '1.0.0',
-    name: 'threejs-miniprogram-adapter',
-    description: 'Modular adapter for using three.js in WeChat Mini Program'
+    version: VERSION,
+    name: PACKAGE_NAME,
+    description: PACKAGE_DESCRIPTION
   };
 }
 
