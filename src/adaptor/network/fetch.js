@@ -360,7 +360,8 @@ function isSafeLocalPath(filePath) {
     const decoded = segment.replace(/%20/gi, ' ');
     return segment === '..' ||
       /^\.{2,}[ .]*$/.test(decoded) ||
-      lower.includes('%2e') || lower.includes('%2f') || lower.includes('%5c') || lower.includes('%25');
+      lower.includes('%2e') || lower.includes('%2f') || lower.includes('%5c') || lower.includes('%25') ||
+      lower.includes('%00') || segment.includes('\u0000');
   })) {
     return false;
   }

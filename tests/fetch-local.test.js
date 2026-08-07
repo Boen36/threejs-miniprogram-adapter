@@ -72,6 +72,9 @@ describe('fetch local files', () => {
     await assert.rejects(() => fetch('wxfile://usr/..%20/secret.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/.../secret.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/%252e%252e/secret.txt'), /restricted/);
+    // NUL 截断：C 字符串 fs 会在 NUL 处截断，'..%00' 会变成 '..'
+    await assert.rejects(() => fetch('wxfile://usr/..%00/secret.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/a%00b.txt'), /restricted/);
     assert.deepEqual(reads, []);
   });
 
