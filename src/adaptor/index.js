@@ -13,7 +13,7 @@ import { EventTarget } from './events/event-target.js';
 import { Event, UIEvent, MouseEvent, Touch, TouchList, TouchEvent, KeyboardEvent, WheelEvent } from './events/event.js';
 import { PointerEvent, convertTouchToPointer, convertTouchesToPointers } from './events/pointer-event.js';
 import { bindTouchEvents, unbindTouchEvents, createTouchEventHandlers, installEventBridge } from './events/bridge.js';
-import { fetch, Request, Response, Headers } from './network/fetch.js';
+import { fetch, Request, Response, Headers, DOMException, atob } from './network/fetch.js';
 import { XMLHttpRequest, XMLHttpRequestUpload, FormData } from './network/xhr.js';
 import { Blob, File, FileReader, btoa } from './network/blob.js';
 import { WebGL2RenderingContextWrapper } from './webgl/webgl2-context.js';
@@ -88,6 +88,7 @@ function installPolyfills(globalObject = globalThis, config = {}) {
   setDefault(globalObject, 'Blob', Blob);
   setDefault(globalObject, 'File', File);
   setDefault(globalObject, 'FileReader', FileReader);
+  setDefault(globalObject, 'DOMException', DOMException);
 
   // URL 对象
   setDefault(globalObject, 'URL', URLClass);
@@ -113,25 +114,7 @@ function installPolyfills(globalObject = globalThis, config = {}) {
 
   // 工具函数
   setDefault(globalObject, 'btoa', btoa);
-  setDefault(globalObject, 'atob', function(str) {
-    // 简化实现
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-    let output = '';
-    let i = 0;
-    while (i < str.length) {
-      const enc1 = chars.indexOf(str.charAt(i++));
-      const enc2 = chars.indexOf(str.charAt(i++));
-      const enc3 = chars.indexOf(str.charAt(i++));
-      const enc4 = chars.indexOf(str.charAt(i++));
-      const chr1 = (enc1 << 2) | (enc2 >> 4);
-      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
-      const chr3 = ((enc3 & 3) << 6) | enc4;
-      output += String.fromCharCode(chr1);
-      if (enc3 !== 64) output += String.fromCharCode(chr2);
-      if (enc4 !== 64) output += String.fromCharCode(chr3);
-    }
-    return output;
-  });
+  setDefault(globalObject, 'atob', atob);
 
   if (options.debug) {
     console.log('[threejs-miniprogram-adapter] Polyfills installed successfully');

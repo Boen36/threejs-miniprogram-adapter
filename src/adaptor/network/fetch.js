@@ -451,5 +451,5 @@ class DOMException extends Error {
   }
 }
 
-export { fetch, Request, Response, Headers, DOMException };
+export { fetch, Request, Response, Headers, DOMException, atob };
 export default fetch;

@@ -42,6 +42,13 @@
 - 尚未发布到 npm；README 安装说明目前用 GitHub 直装。
 - 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。
 
-## 发布流程（待执行时细化）
+## 发布流程（npm）
 
-README 说"正式发布到 npm 后本节切换为 registry 安装"。发布前需：bump `src/version.js` + package.json、跑 `npm run check`、走人工真机清单、更新 README 安装说明。
+尚未发布到 npm；README 安装说明目前用 GitHub 直装。发布前按此清单执行（README 说发布后会把安装说明切换为 registry 方式）：
+
+1. **真机验证**（不可跳过）：微信开发者工具导入 `examples/`，跑通三个页面（basic / controls / loaders），再覆盖 Android 与 iOS：基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。
+2. **版本号**：同步更新 `src/version.js` 与 `package.json` 的 `version`（tests 校验两者一致）。按 semver：破坏性 API 变更 → major；新能力 → minor；修复 → patch。
+3. **README**：把「安装」节切换为 `npm install threejs-miniprogram-adapter`；「项目状态」横幅若含未发布说明则更新；确认能力表与现状一致（不要扩大声明）。
+4. **检查**：`npm run check` 全绿；确认 `npm pack --dry-run` 的 tarball 只含 `src/`、`types/`、LICENSE、README、package.json（`files` 白名单已配好，AGENTS.md 不会进包）。
+5. **发布**：`npm publish`（需 npm registry 账号权限）。发布后验证 `npm view threejs-miniprogram-adapter` 与从干净工程 `npm i threejs-miniprogram-adapter && npm run check`（types consumer fixture 已在 CI）。
+6. **收尾**：examples/package.json 的 `"file:.."` 依赖可保持（示例用本地源码更方便）；给发布 commit 打 tag。
