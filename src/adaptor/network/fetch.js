@@ -347,12 +347,14 @@ function normalizeLocalFilePath(filePath) {
 
 /**
  * 沙箱白名单校验：只允许读取小程序自身的数据目录（usr）与代码包（store），
- * 拒绝路径遍历（含百分号编码形式，如 %2e%2e —— 宿主 fs 可能做 URL 解码）。
+ * 拒绝路径遍历，包括宿主 fs 可能 URL 解码的编码形式：
+ * %2e（.）、%2f（/）、%5c（\）——合法沙箱路径（USER_DATA_PATH + 自生成文件名）
+ * 不含这些编码，拒绝它们零误伤；%20 等普通编码文件名仍可用。
  */
 function isSafeLocalPath(filePath) {
   if (filePath.split(/[\\/]/).some(segment => {
     const lower = segment.toLowerCase();
-    return segment === '..' || lower.includes('%2e');
+    return segment === '..' || lower.includes('%2e') || lower.includes('%2f') || lower.includes('%5c');
   })) {
     return false;
   }

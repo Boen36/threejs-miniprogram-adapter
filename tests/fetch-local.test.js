@@ -63,7 +63,16 @@ describe('fetch local files', () => {
     // 百分号编码的路径遍历（宿主 fs 可能做 URL 解码）
     await assert.rejects(() => fetch('wxfile://usr/%2e%2e/secret.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/a%2e%2eb.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/a%2f..%2f..%2fsecret.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/a%5c..%5csecret.txt'), /restricted/);
     assert.deepEqual(reads, []);
+  });
+
+  test('allows ordinary percent-encoded filenames inside the sandbox', async () => {
+    const reads = installFSMock({ 'wxfile://usr/a%20b.glb': 'AB' });
+    const response = await fetch('wxfile://usr/a%20b.glb');
+    assert.equal(response.status, 200);
+    assert.deepEqual(reads, ['wxfile://usr/a%20b.glb']);
   });
 
   test('does not treat URLs merely sharing the user-data prefix as local', async () => {
