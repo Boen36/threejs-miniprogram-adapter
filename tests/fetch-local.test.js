@@ -68,6 +68,10 @@ describe('fetch local files', () => {
     await assert.rejects(() => fetch('wxfile://usr/A%2E%2E/secret.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/a%2F..%2F..%2Fsecret.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/a%5C..%5Csecret.txt'), /restricted/);
+    // Windows 风格归一化变体与双编码纵深防御
+    await assert.rejects(() => fetch('wxfile://usr/..%20/secret.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/.../secret.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/%252e%252e/secret.txt'), /restricted/);
     assert.deepEqual(reads, []);
   });
 

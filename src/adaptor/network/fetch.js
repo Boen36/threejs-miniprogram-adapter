@@ -348,13 +348,19 @@ function normalizeLocalFilePath(filePath) {
 /**
  * 沙箱白名单校验：只允许读取小程序自身的数据目录（usr）与代码包（store），
  * 拒绝路径遍历，包括宿主 fs 可能 URL 解码的编码形式：
- * %2e（.）、%2f（/）、%5c（\）——合法沙箱路径（USER_DATA_PATH + 自生成文件名）
- * 不含这些编码，拒绝它们零误伤；%20 等普通编码文件名仍可用。
+ * %2e（.）、%2f（/）、%5c（\）、%25（% —— 双编码纵深防御）；
+ * 以及 Windows 风格归一化后的 '..' 变体（尾部点/空格，如 '.. '、'...'）。
+ * 合法沙箱路径（USER_DATA_PATH + 自生成文件名）不含这些模式，拒绝零误伤；
+ * %20 等普通编码文件名仍可用。
  */
 function isSafeLocalPath(filePath) {
   if (filePath.split(/[\\/]/).some(segment => {
     const lower = segment.toLowerCase();
-    return segment === '..' || lower.includes('%2e') || lower.includes('%2f') || lower.includes('%5c');
+    // Windows 风格归一化：%20 先解码为空格，再匹配 '..' 变体（'.. '、'...' 等）
+    const decoded = segment.replace(/%20/gi, ' ');
+    return segment === '..' ||
+      /^\.{2,}[ .]*$/.test(decoded) ||
+      lower.includes('%2e') || lower.includes('%2f') || lower.includes('%5c') || lower.includes('%25');
   })) {
     return false;
   }
