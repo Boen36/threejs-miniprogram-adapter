@@ -270,7 +270,10 @@ function createGestureControls(camera, domElement, options = {}) {
   const onPointerDown = (e) => {
     const currentTime = Date.now();
     const tapLength = currentTime - lastTapTime;
-    if (tapLength < 300 && tapLength > 0 && e.pointerId === lastTapPointerId) {
+    if (e.pointerId !== lastTapPointerId) {
+      // 不同指针的点击不算双击，重新计时
+      lastTapTime = 0;
+    } else if (tapLength < 300 && tapLength > 0) {
       // 双击，重置视角
       if (options.onDoubleTap) {
         options.onDoubleTap();

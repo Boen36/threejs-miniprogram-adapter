@@ -254,7 +254,13 @@ class HTMLCanvasElement extends HTMLElement {
       return true;
     }
 
-    const replaced = this._context._replaceContext(gl);
+    const replaced = (() => {
+      try {
+        return this._context._replaceContext(gl);
+      } catch {
+        return false;
+      }
+    })();
     this.dispatchEvent(new Event(replaced ? 'webglcontextrestored' : 'webglcontextlost'));
     return replaced;
   }

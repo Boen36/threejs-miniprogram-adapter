@@ -144,7 +144,7 @@ function convertTouchToPointer(touch, type, target, options = {}) {
     // 压力（小程序可能支持，默认 0.5 表示触摸）
     pressure: touch.force !== undefined ? touch.force : 0.5,
     width: touch.radiusX ?? 20,
-    height: touch.radiusY || 20,
+    height: touch.radiusY ?? 20,
 
     // 目标
     target: target,

@@ -266,7 +266,7 @@ export function createAdaptedCanvas(
     bindTouchEvents?: boolean;
     touchOptions?: { capture?: boolean; passive?: boolean; debug?: boolean };
   }
-): HTMLCanvasElement;
+): AdaptedCanvas;
 
 /**
  * 获取版本信息
