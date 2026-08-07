@@ -60,6 +60,9 @@ describe('fetch local files', () => {
     await assert.rejects(() => fetch('wxfile://tmp/evil.txt'), /restricted/);
     await assert.rejects(() => fetch('wxfile://usr/../secret.txt'), /restricted/);
     await assert.rejects(() => fetch('file://etc/passwd'), /restricted/);
+    // 百分号编码的路径遍历（宿主 fs 可能做 URL 解码）
+    await assert.rejects(() => fetch('wxfile://usr/%2e%2e/secret.txt'), /restricted/);
+    await assert.rejects(() => fetch('wxfile://usr/a%2e%2eb.txt'), /restricted/);
     assert.deepEqual(reads, []);
   });
 

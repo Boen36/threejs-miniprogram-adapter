@@ -347,10 +347,15 @@ function normalizeLocalFilePath(filePath) {
 
 /**
  * 沙箱白名单校验：只允许读取小程序自身的数据目录（usr）与代码包（store），
- * 拒绝路径遍历（..）。
+ * 拒绝路径遍历（含百分号编码形式，如 %2e%2e —— 宿主 fs 可能做 URL 解码）。
  */
 function isSafeLocalPath(filePath) {
-  if (filePath.split(/[\\/]/).includes('..')) return false;
+  if (filePath.split(/[\\/]/).some(segment => {
+    const lower = segment.toLowerCase();
+    return segment === '..' || lower.includes('%2e');
+  })) {
+    return false;
+  }
   if (filePath.startsWith('wxfile://')) {
     return filePath === 'wxfile://usr' || filePath.startsWith('wxfile://usr/') ||
       filePath === 'wxfile://store' || filePath.startsWith('wxfile://store/');
