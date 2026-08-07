@@ -214,20 +214,46 @@ class URL {
 /**
  * URLSearchParams 类
  */
+
+// 容错解码：+ 表示空格；无效百分号序列按原样保留（WHATWG 不抛错）
+function decodeSearchParam(value) {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, ' '));
+  } catch {
+    return value.replace(/\+/g, ' ');
+  }
+}
+
+// WHATWG application/x-www-form-urlencoded 序列化：空格 -> '+'
+function serializeSearchParam(value) {
+  return encodeURIComponent(String(value))
+    .replace(/%20/g, '+')
+    .replace(/[!'()~]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 class URLSearchParams {
   constructor(init) {
-    this._params = new Map();
+    // 查询对列表，保持插入顺序（WHATWG 语义）
+    this._pairs = [];
 
     if (init) {
       if (typeof init === 'string') {
         // 解析查询字符串
         const query = init.startsWith('?') ? init.slice(1) : init;
-        query.split('&').forEach(pair => {
-          const [key, value] = pair.split('=').map(decodeURIComponent);
-          if (key) {
-            this.append(key, value || '');
-          }
-        });
+        if (query) {
+          query.split('&').forEach(pair => {
+            if (!pair) return;
+            const eq = pair.indexOf('=');
+            const rawKey = eq === -1 ? pair : pair.slice(0, eq);
+            const rawValue = eq === -1 ? '' : pair.slice(eq + 1);
+            const key = decodeSearchParam(rawKey);
+            if (key) {
+              this.append(key, decodeSearchParam(rawValue));
+            }
+          });
+        }
+      } else if (init instanceof URLSearchParams) {
+        init.forEach((value, key) => this.append(key, value));
       } else if (Array.isArray(init)) {
         init.forEach(([key, value]) => this.append(key, value));
       } else if (typeof init === 'object') {
@@ -237,73 +263,69 @@ class URLSearchParams {
   }
 
   append(name, value) {
-    if (this._params.has(name)) {
-      this._params.set(name, [...this._params.get(name), String(value)]);
-    } else {
-      this._params.set(name, [String(value)]);
-    }
+    this._pairs.push([String(name), String(value)]);
   }
 
   delete(name) {
-    this._params.delete(name);
+    const target = String(name);
+    this._pairs = this._pairs.filter(([key]) => key !== target);
   }
 
   get(name) {
-    const values = this._params.get(name);
-    return values ? values[0] : null;
+    const target = String(name);
+    const pair = this._pairs.find(([key]) => key === target);
+    return pair ? pair[1] : null;
   }
 
   getAll(name) {
-    return this._params.get(name) || [];
+    const target = String(name);
+    return this._pairs.filter(([key]) => key === target).map(([, value]) => value);
   }
 
   has(name) {
-    return this._params.has(name);
+    const target = String(name);
+    return this._pairs.some(([key]) => key === target);
   }
 
   set(name, value) {
-    this._params.set(name, [String(value)]);
+    const target = String(name);
+    const first = this._pairs.findIndex(([key]) => key === target);
+    if (first === -1) {
+      this._pairs.push([target, String(value)]);
+      return;
+    }
+    this._pairs[first] = [target, String(value)];
+    // 移除其余同名项，保持首个位置不变
+    this._pairs = this._pairs.filter(([key], index) => index === first || key !== target);
   }
 
   sort() {
-    const sorted = new Map([...this._params.entries()].sort());
-    this._params = sorted;
+    // 按 name 的 UTF-16 码元稳定排序（Array.prototype.sort 稳定）
+    this._pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   forEach(callback, thisArg) {
-    this._params.forEach((values, key) => {
-      values.forEach(value => {
-        callback.call(thisArg, value, key, this);
-      });
+    this._pairs.forEach(([key, value]) => {
+      callback.call(thisArg, value, key, this);
     });
   }
 
   entries() {
-    const entries = [];
-    this._params.forEach((values, key) => {
-      values.forEach(value => entries.push([key, value]));
-    });
-    return entries[Symbol.iterator]();
+    return this._pairs.map(pair => [...pair])[Symbol.iterator]();
   }
 
   keys() {
-    return this._params.keys();
+    return this._pairs.map(([key]) => key)[Symbol.iterator]();
   }
 
   values() {
-    const values = [];
-    this._params.forEach(vals => values.push(...vals));
-    return values[Symbol.iterator]();
+    return this._pairs.map(([, value]) => value)[Symbol.iterator]();
   }
 
   toString() {
-    const pairs = [];
-    this._params.forEach((values, key) => {
-      values.forEach(value => {
-        pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
-      });
-    });
-    return pairs.join('&');
+    return this._pairs
+      .map(([key, value]) => `${serializeSearchParam(key)}=${serializeSearchParam(value)}`)
+      .join('&');
   }
 
   [Symbol.iterator]() {

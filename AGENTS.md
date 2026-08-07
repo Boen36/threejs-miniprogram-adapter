@@ -44,6 +44,8 @@
 
 ## 发布流程（npm）
 
+**状态：暂缓。** 维护者决定项目成熟前不发布（当前无真机验证背书，README 能力表多为"实验支持"）。只有维护者明确要求时才启动此流程。
+
 尚未发布到 npm；README 安装说明目前用 GitHub 直装。发布前按此清单执行（README 说发布后会把安装说明切换为 registry 方式）：
 
 1. **真机验证**（不可跳过）：微信开发者工具导入 `examples/`，跑通三个页面（basic / controls / loaders），再覆盖 Android 与 iOS：基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。
