@@ -42,6 +42,34 @@ function setDefault(target, key, value) {
   return target[key];
 }
 
+function setManagedDefault(target, key, value, isManaged) {
+  const current = target[key];
+  if (current !== undefined && current !== null && !isManaged(current)) return current;
+  try {
+    target[key] = value;
+  } catch (error) {
+    // 宿主全局不可写时保持原值。
+  }
+  return target[key];
+}
+
+function createImageConstructor(documentObject) {
+  function Image(width, height) {
+    const image = documentObject.createElement('img');
+    if (width !== undefined) image.width = width;
+    if (height !== undefined) image.height = height;
+    return image;
+  }
+  Image.prototype = HTMLImageElement.prototype;
+  Object.setPrototypeOf(Image, HTMLImageElement);
+  Object.defineProperty(Image, '_miniProgramDocument', {
+    configurable: false,
+    enumerable: false,
+    value: documentObject
+  });
+  return Image;
+}
+
 /**
  * 安装所有 polyfills
  * @param {Object} globalObject - 全局对象（global 或 window）
@@ -56,14 +84,28 @@ function installPolyfills(globalObject = globalThis, config = {}) {
 
   // DOM 对象
   const windowObject = setDefault(globalObject, 'window', new Window());
-  const documentObject = setDefault(globalObject, 'document', document);
+  const requestedDocument = options.document instanceof Document ? options.document : document;
+  const documentObject = setManagedDefault(
+    globalObject,
+    'document',
+    requestedDocument,
+    value => value instanceof Document
+  );
   setDefault(globalObject, 'Document', Document);
   setDefault(globalObject, 'Element', Element);
   setDefault(globalObject, 'HTMLElement', HTMLElement);
   setDefault(globalObject, 'HTMLCanvasElement', HTMLCanvasElement);
   setDefault(globalObject, 'HTMLImageElement', HTMLImageElement);
   setDefault(globalObject, 'HTMLVideoElement', HTMLVideoElement);
-  setDefault(globalObject, 'Image', Image);
+  const imageConstructor = createImageConstructor(
+    documentObject instanceof Document ? documentObject : requestedDocument
+  );
+  const installedImage = setManagedDefault(
+    globalObject,
+    'Image',
+    imageConstructor,
+    value => value === Image || value?._miniProgramDocument instanceof Document
+  );
   setDefault(globalObject, 'CSSStyleDeclaration', CSSStyleDeclaration);
   setDefault(globalObject, 'DOMTokenList', DOMTokenList);
 
@@ -113,7 +155,16 @@ function installPolyfills(globalObject = globalThis, config = {}) {
     }
   }
 
-  setDefault(windowObject, 'document', documentObject);
+  setManagedDefault(windowObject, 'document', documentObject, value => value instanceof Document);
+  setManagedDefault(
+    windowObject,
+    'Image',
+    installedImage,
+    value => value === Image || value?._miniProgramDocument instanceof Document
+  );
+  if (documentObject instanceof Document) {
+    documentObject.setDefaultView(windowObject);
+  }
   setDefault(windowObject, 'window', windowObject);
   setDefault(windowObject, 'self', windowObject);
   setDefault(globalObject, 'self', windowObject);
@@ -178,8 +229,9 @@ function createAdaptedCanvas(miniProgramCanvas, options = {}) {
     bindTouchEvents(canvas, options.touchOptions);
   }
 
-  // 更新 document 中的 canvas 引用
-  document.setCanvas(canvas);
+  // 每个 adapter 可传入独立 document，避免多页面图片工厂串到最后一个 canvas。
+  const ownerDocument = options.document instanceof Document ? options.document : document;
+  ownerDocument.setCanvas(canvas);
 
   return canvas;
 }

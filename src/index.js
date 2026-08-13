@@ -11,7 +11,7 @@ import {
   bindTouchEvents,
   unbindTouchEvents,
   createTouchEventHandlers,
-  document,
+  Document,
   WebGLExtensions,
   checkMiniProgramLimitations
 } from './adaptor/index.js';
@@ -24,6 +24,45 @@ import {
   hasPlatformInfoSupport,
   readPlatformInfo
 } from './adaptor/platform.js';
+
+const adapterDocumentStacks = new WeakMap();
+
+function activateAdapterDocument(globalObject, documentObject, debug) {
+  let stack = adapterDocumentStacks.get(globalObject);
+  if (!stack) {
+    stack = [];
+    adapterDocumentStacks.set(globalObject, stack);
+  }
+  stack.push(documentObject);
+  try {
+    installPolyfills(globalObject, { debug, document: documentObject });
+  } catch (error) {
+    stack.pop();
+    if (stack.length === 0) adapterDocumentStacks.delete(globalObject);
+    throw error;
+  }
+
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    const currentStack = adapterDocumentStacks.get(globalObject);
+    if (!currentStack) return;
+    const wasCurrent = currentStack[currentStack.length - 1] === documentObject;
+    const index = currentStack.lastIndexOf(documentObject);
+    if (index !== -1) currentStack.splice(index, 1);
+
+    if (wasCurrent && currentStack.length > 0) {
+      installPolyfills(globalObject, {
+        debug: false,
+        document: currentStack[currentStack.length - 1]
+      });
+    }
+    if (currentStack.length === 0) {
+      adapterDocumentStacks.delete(globalObject);
+    }
+  };
+}
 
 function getGlobalObject() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -95,19 +134,29 @@ function adaptForMiniProgram(canvas, options = {}) {
     console.log('[threejs-miniprogram-adapter] Initializing adapter...');
   }
 
-  // 1. 注入全局 polyfills
-  if (config.injectGlobals) {
-    installPolyfills(config.globalObject || getGlobalObject(), { debug: config.debug });
-  }
-
-  // 2. 创建适配的 canvas
+  // 1. 为每个 adapter 创建独立 document 与 canvas，避免多页面共享图片工厂。
+  const adapterDocument = new Document();
   const adaptedCanvas = createAdaptedCanvas(canvas, {
     bindTouchEvents: config.bindTouchEvents,
+    document: adapterDocument,
     touchOptions: {
       capture: false,
       passive: true
     }
   });
+
+  // 2. 当前页面的 document/Image 激活到注入目标；dispose 时恢复上一页。
+  const globalObject = config.globalObject || getGlobalObject();
+  let deactivateDocument = () => {};
+  if (config.injectGlobals) {
+    try {
+      deactivateDocument = activateAdapterDocument(globalObject, adapterDocument, config.debug);
+    } catch (error) {
+      unbindTouchEvents(adaptedCanvas);
+      adapterDocument.removeCanvas(adaptedCanvas);
+      throw error;
+    }
+  }
 
   // 3. 设置 canvas 尺寸
   if (config.canvasWidth) {
@@ -179,7 +228,7 @@ function adaptForMiniProgram(canvas, options = {}) {
     miniProgramCanvas: canvas,
 
     // document 对象
-    document: document,
+    document: adapterDocument,
 
     // 环境信息
     environment: env,
@@ -205,10 +254,16 @@ function adaptForMiniProgram(canvas, options = {}) {
     version: VERSION,
 
     // 销毁方法
-    dispose: () => {
-      unbindTouchEvents(adaptedCanvas);
-      document.removeCanvas(adaptedCanvas);
-    }
+    dispose: (() => {
+      let disposed = false;
+      return () => {
+        if (disposed) return;
+        disposed = true;
+        unbindTouchEvents(adaptedCanvas);
+        adapterDocument.removeCanvas(adaptedCanvas);
+        deactivateDocument();
+      };
+    })()
   };
 }
 

@@ -239,7 +239,7 @@ export function waitForCanvas(
  */
 export function installPolyfills(
   globalObject?: any,
-  config?: { debug?: boolean }
+  config?: { debug?: boolean; document?: Document }
 ): void;
 
 /**
@@ -264,6 +264,7 @@ export function createAdaptedCanvas(
   miniProgramCanvas: any,
   options?: {
     bindTouchEvents?: boolean;
+    document?: Document;
     touchOptions?: { capture?: boolean; passive?: boolean; debug?: boolean };
   }
 ): AdaptedCanvas;
@@ -342,9 +343,14 @@ export class MiniProgramDRACOLoader {
 type MiniProgramDRACOLoaderClass = typeof MiniProgramDRACOLoader;
 
 // Loader 插件
+export interface LoaderPluginOptions {
+  /** 固定使用某个 adapter 的 document/Canvas 图片工厂。 */
+  document?: Document;
+}
+
 export namespace LoaderPlugins {
-  function enhanceAllLoaders(THREE: any): void;
-  function enhanceTextureLoader(THREE: any): void;
+  function enhanceAllLoaders(THREE: any, options?: LoaderPluginOptions): void;
+  function enhanceTextureLoader(THREE: any, options?: LoaderPluginOptions): void;
   function enhanceGLTFLoader(THREE: any): void;
   function enhanceOBJLoader(THREE: any): void;
   function enhanceMTLLoader(THREE: any): void;
@@ -366,13 +372,15 @@ export namespace LoaderPlugins {
     THREE: any,
     base64Data: string,
     onLoad?: (texture: any) => void,
-    onError?: (error: any) => void
+    onError?: (error: any) => void,
+    options?: LoaderPluginOptions
   ): any;
   function loadTextureFromFile(
     THREE: any,
     filePath: string,
     onLoad?: (texture: any) => void,
-    onError?: (error: any) => void
+    onError?: (error: any) => void,
+    options?: LoaderPluginOptions
   ): any;
 }
 
