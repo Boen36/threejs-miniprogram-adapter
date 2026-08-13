@@ -349,13 +349,19 @@ export interface LoaderPluginOptions {
 }
 
 export namespace LoaderPlugins {
+  /** @deprecated 标准 Loader 不再需要批量补丁；适配 canvas 后直接使用即可。 */
   function enhanceAllLoaders(THREE: any, options?: LoaderPluginOptions): void;
+  /** @deprecated 适配 canvas 后直接使用 THREE.TextureLoader。 */
   function enhanceTextureLoader(THREE: any, options?: LoaderPluginOptions): void;
+  /** @deprecated 适配 canvas 后直接使用 GLTFLoader。 */
   function enhanceGLTFLoader(THREE: any): void;
+  /** @deprecated 该入口不再改写原型；请直接使用 OBJLoader。 */
   function enhanceOBJLoader(THREE: any): void;
+  /** @deprecated 该入口不再改写原型；请直接使用 MTLLoader。 */
   function enhanceMTLLoader(THREE: any): void;
+  /** @deprecated 该入口不再改写原型；请直接使用 FBXLoader。 */
   function enhanceFBXLoader(THREE: any): void;
-  /** 创建适配小程序路径的 FileLoader（load 返回 Promise 风格回调）。 */
+  /** @deprecated 使用适配层安装的 fetch/XMLHttpRequest 与 THREE.FileLoader。 */
   function createFileLoader(): {
     load: (
       url: string,
@@ -364,10 +370,12 @@ export namespace LoaderPlugins {
       onError?: (error: any) => void
     ) => void;
   };
-  /** 解析路径，处理小程序特有的路径格式。 */
+  /** @deprecated 该函数原样返回输入；请直接使用原 URL。 */
   function resolvePath(url: string): string;
   const MiniProgramDRACOLoader: MiniProgramDRACOLoaderClass;
+  /** @deprecated 使用 THREE.Cache 或业务层持有的可释放资源缓存。 */
   function createCachedLoader(THREE: any, LoaderClass: any): any;
+  /** 从 base64/data URL 创建纹理；可固定使用某个 adapter 的 Document。 */
   function loadTextureFromBase64(
     THREE: any,
     base64Data: string,
@@ -375,6 +383,7 @@ export namespace LoaderPlugins {
     onError?: (error: any) => void,
     options?: LoaderPluginOptions
   ): any;
+  /** 从小程序本地文件创建纹理；可固定使用某个 adapter 的 Document。 */
   function loadTextureFromFile(
     THREE: any,
     filePath: string,

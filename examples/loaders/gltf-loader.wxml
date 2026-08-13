@@ -1,5 +1,6 @@
 <view class="container">
   <canvas type="webgl" id="webgl" class="webgl-canvas"></canvas>
   <view class="hud" wx:if="{{!isReady}}">加载进度：{{loadingProgress}}%</view>
-  <button class="local-button" size="mini" bindtap="loadFromLocal">选择本地 GLB</button>
+  <button class="local-button model-button" size="mini" bindtap="loadFromLocal">选择本地 GLB</button>
+  <button class="local-button texture-button" size="mini" bindtap="loadTextureFromLocal">选择本地纹理</button>
 </view>

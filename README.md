@@ -161,8 +161,23 @@ loader.load(
 
 - 真机网络请求必须使用 HTTPS，并在小程序后台配置合法域名。
 - 本地临时文件和 data URL 由适配网络层处理。
-- `LoaderPlugins` 保留给兼容旧用法；普通 GLTFLoader 不需要调用 `enhanceAllLoaders()`。
+- 适配 canvas 后直接使用 three.js 的 `FileLoader`、`TextureLoader` 和 `GLTFLoader`；不需要额外补丁。
+- `enhanceAllLoaders()` 与各 `enhance*Loader()` 已弃用并成为无副作用迁移层；调用时只会给出一次告警，后续主版本将移除。
 - 带 `KHR_draco_mesh_compression` 的模型使用 `MiniProgramDRACOLoader`，见下一节。
+
+`LoaderPlugins.loadTextureFromBase64()` 和 `loadTextureFromFile()` 是保留的显式纹理入口。多页面或多 Canvas 并存时，可把图片创建固定到某个 adapter：
+
+```javascript
+LoaderPlugins.loadTextureFromFile(
+  THREE,
+  tempFilePath,
+  texture => scene.add(createPreview(texture)),
+  error => console.error('纹理加载失败', error),
+  { document: adapter.document }
+);
+```
+
+旧的 `createFileLoader()`、`resolvePath()` 和 `createCachedLoader()` 也仅为迁移兼容保留，并会给出一次性弃用告警。完整本地模型与纹理示例见 `examples/loaders/`。
 
 ## 加载 DRACO 压缩 glTF
 
@@ -236,7 +251,7 @@ loader.load('https://example.com/model-draco.glb', gltf => scene.add(gltf.scene)
 - `quickAdapt(canvas, options?)`
 - `installPolyfills(globalObject?, config?)`
 - `MiniProgramDRACOLoader`：主线程 WASM 解码的 DRACO 加载器，见「加载 DRACO 压缩 glTF」
-- `LoaderPlugins`
+- `LoaderPlugins`：保留显式纹理 helper 与 `MiniProgramDRACOLoader`；旧 `enhance*`、路径和缓存入口仅作弃用迁移层
 
 TypeScript 声明位于 `types/index.d.ts`，并由 CI 编译 consumer fixture。
 

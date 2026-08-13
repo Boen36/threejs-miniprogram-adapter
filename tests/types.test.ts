@@ -25,10 +25,10 @@ const result: AdaptResult = adaptForMiniProgram(canvas, options);
 const report = result.inspectWebGL();
 report?.supported.forEach(extension => extension.toUpperCase());
 
+// —— Loader 插件：运行时导出与声明对齐 ——
+// 旧补丁入口只保留类型兼容，并在运行时发出一次性弃用告警。
 adapter.LoaderPlugins.enhanceAllLoaders({});
 LoaderPlugins.enhanceAllLoaders({});
-
-// —— Loader 插件：运行时导出与声明对齐 ——
 LoaderPlugins.enhanceTextureLoader({});
 LoaderPlugins.enhanceTextureLoader({}, { document: result.document });
 LoaderPlugins.enhanceGLTFLoader({});
@@ -48,6 +48,7 @@ const resolvedPath: string = LoaderPlugins.resolvePath('file:///tmp/a.glb');
 void resolvedPath;
 
 LoaderPlugins.createCachedLoader({}, class {});
+// 显式纹理 helper 与 DRACO Loader 是 LoaderPlugins 保留的能力。
 LoaderPlugins.loadTextureFromBase64({}, 'data:image/png;base64,AAA=');
 LoaderPlugins.loadTextureFromFile({}, 'wxfile://tmp/tex.png');
 LoaderPlugins.loadTextureFromFile({}, 'wxfile://tmp/tex.png', undefined, undefined, { document: result.document });

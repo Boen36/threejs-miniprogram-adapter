@@ -1,11 +1,21 @@
 /**
- * Loader 插件增强
- * 为 three.js 的各种 Loader 提供小程序环境适配
+ * Loader 兼容工具。
+ * 标准 Loader 由全局适配层支持；这里只保留显式纹理 helper 与旧 API 迁移层。
  */
 
 import { MiniProgramDRACOLoader } from './draco-loader.js';
 
 import { document as fallbackDocument } from '../adaptor/dom/document.js';
+
+const deprecationWarnings = new Set();
+
+function warnDeprecated(name, migration) {
+  if (deprecationWarnings.has(name)) return;
+  deprecationWarnings.add(name);
+  console.warn(
+    `[threejs-miniprogram-adapter] LoaderPlugins.${name}() is deprecated. ${migration}`
+  );
+}
 
 function createImageElement(documentObject) {
   const activeDocument = documentObject ||
@@ -17,16 +27,15 @@ function createImageElement(documentObject) {
 /**
  * 创建适配小程序的文件加载函数
  * 用于替换 Loader 的加载方法
+ * @deprecated 使用适配器安装的 fetch/XMLHttpRequest 与 three.js FileLoader。
  */
 function createFileLoader() {
+  warnDeprecated('createFileLoader', 'Use THREE.FileLoader with the installed fetch/XMLHttpRequest polyfills.');
   return {
     load: function(url, onLoad, onProgress, onError) {
-      // 处理小程序路径
-      const resolvedUrl = resolvePath(url);
-
       // 使用适配的 fetch
       if (typeof fetch !== 'undefined') {
-        fetch(resolvedUrl)
+        fetch(url)
           .then(response => {
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -43,7 +52,7 @@ function createFileLoader() {
       } else {
         // 回退到 XMLHttpRequest
         const request = new XMLHttpRequest();
-        request.open('GET', resolvedUrl, true);
+        request.open('GET', url, true);
         request.responseType = 'arraybuffer';
 
         request.addEventListener('load', function() {
@@ -69,170 +78,62 @@ function createFileLoader() {
 }
 
 /**
- * 解析路径
- * 处理小程序特有的路径格式
+ * @deprecated 该函数始终原样返回输入；调用方直接使用 URL 即可。
  */
 function resolvePath(url) {
-  if (!url) return url;
-
-  // 已经是完整 URL
-  if (url.startsWith('http://') || url.startsWith('https://') ||
-      url.startsWith('data:') || url.startsWith('blob:')) {
-    return url;
-  }
-
-  // 小程序本地文件路径
-  if (url.startsWith('wxfile://') || url.startsWith('file://')) {
-    return url;
-  }
-
-  // 相对路径，可能需要处理
+  warnDeprecated('resolvePath', 'Use the original URL directly.');
   return url;
 }
 
 /**
- * 增强 TextureLoader
- * 添加小程序图片加载支持
+ * @deprecated Document/Image polyfill 已支持标准 THREE.TextureLoader；不再改写原型。
  */
-function enhanceTextureLoader(THREE, options = {}) {
-  if (!THREE || !THREE.TextureLoader) {
-    console.warn('THREE.TextureLoader not available');
-    return;
-  }
-
-  THREE.TextureLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-    const manager = this.manager || THREE.DefaultLoadingManager;
-    const resolvedUrl = resolvePath(url);
-
-    // 接入 LoadingManager：没有 itemStart/itemEnd 时，onLoad/onProgress 门控会永久挂起
-    manager.itemStart(resolvedUrl);
-
-    // 创建小程序图片
-    const image = createImageElement(options?.document);
-    image.crossOrigin = 'anonymous';
-
-    const texture = new THREE.Texture();
-    texture.image = image;
-
-    image.onload = () => {
-      texture.needsUpdate = true;
-      manager.itemEnd(resolvedUrl);
-      if (onLoad) onLoad(texture);
-    };
-
-    image.onerror = (err) => {
-      console.error('Failed to load texture:', url, err);
-      manager.itemError?.(resolvedUrl);
-      manager.itemEnd(resolvedUrl);
-      if (onError) onError(err);
-    };
-
-    image.src = resolvedUrl;
-
-    return texture;
-  };
+function enhanceTextureLoader() {
+  warnDeprecated('enhanceTextureLoader', 'Use THREE.TextureLoader directly after adaptForMiniProgram().');
 }
 
 /**
- * 增强 GLTFLoader
- * 处理 GLTF 资源路径和资源加载
+ * @deprecated 标准 GLTFLoader 已由全局适配层支持；不再改写原型。
  */
-function enhanceGLTFLoader(THREE) {
-  if (!THREE || !THREE.GLTFLoader) {
-    return;
-  }
-
-  // 确保路径处理正确（DRACO/KTX2 走小程序专用流程，此处不处理）
-  const originalLoad = THREE.GLTFLoader.prototype.load;
-  THREE.GLTFLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-    const resolvedUrl = resolvePath(url);
-    return originalLoad.call(this, resolvedUrl, onLoad, onProgress, onError);
-  };
+function enhanceGLTFLoader() {
+  warnDeprecated('enhanceGLTFLoader', 'Use GLTFLoader directly after adaptForMiniProgram().');
 }
 
 /**
- * 增强 OBJLoader
+ * @deprecated 该函数没有产生有效路径转换；不再改写原型。
  */
-function enhanceOBJLoader(THREE) {
-  if (!THREE || !THREE.OBJLoader) {
-    return;
-  }
-
-  const originalLoad = THREE.OBJLoader.prototype.load;
-  THREE.OBJLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-    const resolvedUrl = resolvePath(url);
-    return originalLoad.call(this, resolvedUrl, onLoad, onProgress, onError);
-  };
+function enhanceOBJLoader() {
+  warnDeprecated('enhanceOBJLoader', 'Use OBJLoader directly; no adapter-specific patch is applied.');
 }
 
 /**
- * 增强 MTLLoader
+ * @deprecated 该函数没有产生有效路径转换；不再改写原型。
  */
-function enhanceMTLLoader(THREE) {
-  if (!THREE || !THREE.MTLLoader) {
-    return;
-  }
-
-  const originalLoad = THREE.MTLLoader.prototype.load;
-  THREE.MTLLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-    const resolvedUrl = resolvePath(url);
-    return originalLoad.call(this, resolvedUrl, onLoad, onProgress, onError);
-  };
-
-  // 设置材质路径
-  const originalSetPath = THREE.MTLLoader.prototype.setPath;
-  THREE.MTLLoader.prototype.setPath = function(path) {
-    const resolvedPath = resolvePath(path);
-    return originalSetPath.call(this, resolvedPath);
-  };
+function enhanceMTLLoader() {
+  warnDeprecated('enhanceMTLLoader', 'Use MTLLoader directly; no adapter-specific patch is applied.');
 }
 
 /**
- * 增强 FBXLoader
+ * @deprecated 该函数没有产生有效路径转换；不再改写原型。
  */
-function enhanceFBXLoader(THREE) {
-  if (!THREE || !THREE.FBXLoader) {
-    return;
-  }
-
-  const originalLoad = THREE.FBXLoader.prototype.load;
-  THREE.FBXLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-    const resolvedUrl = resolvePath(url);
-    return originalLoad.call(this, resolvedUrl, onLoad, onProgress, onError);
-  };
+function enhanceFBXLoader() {
+  warnDeprecated('enhanceFBXLoader', 'Use FBXLoader directly; no adapter-specific patch is applied.');
 }
 
 /**
- * 应用所有 Loader 增强
- * @param {Object} THREE - three.js 实例
+ * @deprecated 不再批量改写 three.js Loader 原型。
  */
-function enhanceAllLoaders(THREE, options = {}) {
-  if (!THREE) {
-    console.warn('THREE is not available');
-    return;
-  }
-
-  enhanceTextureLoader(THREE, options);
-  enhanceGLTFLoader(THREE);
-  enhanceOBJLoader(THREE);
-  enhanceMTLLoader(THREE);
-  enhanceFBXLoader(THREE);
-
-  // 增强 FileLoader（基础加载器）
-  if (THREE.FileLoader) {
-    const originalLoad = THREE.FileLoader.prototype.load;
-    THREE.FileLoader.prototype.load = function(url, onLoad, onProgress, onError) {
-      const resolvedUrl = resolvePath(url);
-      return originalLoad.call(this, resolvedUrl, onLoad, onProgress, onError);
-    };
-  }
+function enhanceAllLoaders() {
+  warnDeprecated('enhanceAllLoaders', 'Use standard three.js loaders after adaptForMiniProgram().');
 }
 
 /**
  * 创建带缓存的加载器
  * 小程序网络请求较慢，缓存很重要
+ * @deprecated 使用 THREE.Cache 或在业务层管理可释放的资源缓存。
  */
 function createCachedLoader(THREE, LoaderClass) {
+  warnDeprecated('createCachedLoader', 'Use THREE.Cache or an application-owned resource cache.');
   const cache = new Map();
   const MAX_CACHE_ENTRIES = 50;
 
@@ -285,7 +186,7 @@ function createCachedLoader(THREE, LoaderClass) {
  * 小程序中常用
  */
 function loadTextureFromBase64(THREE, base64Data, onLoad, onError, options = {}) {
-  if (!THREE || !THREE.TextureLoader) {
+  if (!THREE || !THREE.Texture) {
     if (onError) onError(new Error('THREE not available'));
     return null;
   }
@@ -316,7 +217,7 @@ function loadTextureFromBase64(THREE, base64Data, onLoad, onError, options = {})
  * @param {string} filePath - 本地文件路径（如 wxfile:// 或 file://）
  */
 function loadTextureFromFile(THREE, filePath, onLoad, onError, options = {}) {
-  if (!THREE || !THREE.TextureLoader) {
+  if (!THREE || !THREE.Texture) {
     if (onError) onError(new Error('THREE not available'));
     return null;
   }

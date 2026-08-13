@@ -5,7 +5,11 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
+import {
+  LoaderPlugins,
+  adaptForMiniProgram,
+  waitForCanvas
+} from 'threejs-miniprogram-adapter';
 import {
   configureRendererSize,
   disposeObject3D,
@@ -170,9 +174,50 @@ Page({
     });
   },
 
+  // 显式 helper 可把图片创建固定到当前 adapter，适合并存页面或多 Canvas。
+  loadTextureFromLocal() {
+    wx.chooseMessageFile({
+      count: 1,
+      type: 'image',
+      success: (res) => {
+        const tempFilePath = res.tempFiles[0].path;
+        LoaderPlugins.loadTextureFromFile(
+          THREE,
+          tempFilePath,
+          (texture) => {
+            if (this._disposed || !this._scene) {
+              texture.dispose();
+              return;
+            }
+
+            if (this._texturePreview) {
+              this._scene.remove(this._texturePreview);
+              disposeObject3D(this._texturePreview);
+            }
+
+            const preview = new THREE.Mesh(
+              new THREE.PlaneGeometry(1.2, 1.2),
+              new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+            );
+            preview.position.set(1.5, 0, 0);
+            this._texturePreview = preview;
+            this._scene.add(preview);
+          },
+          (error) => {
+            if (this._disposed) return;
+            console.error('纹理加载失败:', error);
+            wx.showToast({ title: '纹理加载失败', icon: 'none' });
+          },
+          { document: this._adapter.document }
+        );
+      }
+    });
+  },
+
   onUnload() {
     this._loadToken++;
     this._model = null;
+    this._texturePreview = null;
     disposeRenderingPage(this);
   },
 
