@@ -19,6 +19,11 @@ import * as LoaderPlugins from './plugins/loaders.js';
 import * as ControlPlugins from './plugins/controls.js';
 import { MiniProgramDRACOLoader } from './plugins/draco-loader.js';
 import { VERSION } from './version.js';
+import {
+  getWindowMetrics,
+  hasPlatformInfoSupport,
+  readPlatformInfo
+} from './adaptor/platform.js';
 
 function getGlobalObject() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -148,18 +153,17 @@ function adaptForMiniProgram(canvas, options = {}) {
 
   // 6. 创建响应式尺寸更新（如果需要）
   const updateSize = () => {
-    try {
-      const systemInfo = wx.getSystemInfoSync();
-      const pixelRatio = config.pixelRatio || systemInfo.pixelRatio;
+    if (typeof wx === 'undefined') return null;
+    const windowInfo = getWindowMetrics();
+    const width = windowInfo.windowWidth || adaptedCanvas.clientWidth;
+    const height = windowInfo.windowHeight || adaptedCanvas.clientHeight;
+    if (!width || !height) return null;
 
-      return {
-        width: systemInfo.windowWidth,
-        height: systemInfo.windowHeight,
-        pixelRatio: pixelRatio
-      };
-    } catch (e) {
-      return null;
-    }
+    return {
+      width,
+      height,
+      pixelRatio: config.pixelRatio || windowInfo.pixelRatio || 1
+    };
   };
 
   if (config.debug) {
@@ -226,7 +230,6 @@ function quickAdapt(canvas, options = {}) {
  * @returns {Object} 兼容性报告
  */
 function checkCompatibility() {
-  const env = detectEnvironment();
   const report = {
     compatible: true,
     issues: [],
@@ -235,7 +238,7 @@ function checkCompatibility() {
   };
 
   // 检查运行环境
-  if (!env.isMiniProgram) {
+  if (typeof wx === 'undefined') {
     report.warnings.push('Not running in mini program environment');
   }
 
@@ -248,26 +251,32 @@ function checkCompatibility() {
       report.compatible = false;
       report.issues.push('wx.createSelectorQuery not available');
     }
-    if (!wx.getSystemInfoSync) {
+    if (!hasPlatformInfoSupport(wx)) {
       report.compatible = false;
-      report.issues.push('wx.getSystemInfoSync not available');
+      report.issues.push('wx platform information APIs not available');
     }
   }
 
   // 检查基础库版本
-  if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
-    try {
-      const info = wx.getSystemInfoSync();
-      report.info.SDKVersion = info.SDKVersion;
-      report.info.platform = info.platform;
-      report.info.version = info.version;
+  if (typeof wx !== 'undefined' && hasPlatformInfoSupport(wx)) {
+    const platform = readPlatformInfo(wx);
+    const { info } = platform;
+    report.info.SDKVersion = info.SDKVersion;
+    report.info.platform = info.platform;
+    report.info.version = info.version;
 
-      if (compareVersions(info.SDKVersion, '2.24.0') < 0) {
-        report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.24.0+`);
-      }
-    } catch (error) {
+    if (!platform.sections.window || !platform.sections.device || !platform.sections.app) {
       report.compatible = false;
-      report.issues.push(`wx.getSystemInfoSync failed: ${error.message || error}`);
+      const failedMethods = platform.errors.map(item => item.method).join(', ');
+      report.issues.push(
+        failedMethods
+          ? `Failed to read WeChat platform information: ${failedMethods}`
+          : 'WeChat platform information is incomplete'
+      );
+    } else if (info.SDKVersion && compareVersions(info.SDKVersion, '2.24.0') < 0) {
+      report.warnings.push(`SDK version ${info.SDKVersion} may not support WebGL2 properly. Recommended: 2.24.0+`);
+    } else if (!info.SDKVersion) {
+      report.warnings.push('SDK version is unavailable; WebGL2 support cannot be confirmed');
     }
   }
 
