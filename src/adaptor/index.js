@@ -21,6 +21,7 @@ import { WebGLExtensions, detectWebGLExtensions, checkMiniProgramLimitations } f
 import { URL as URLClass, URLSearchParams, createObjectURL, revokeObjectURL } from './media/url.js';
 import { AudioContext, Audio, HTMLAudioElement } from './media/audio.js';
 import { VERSION, PACKAGE_NAME, PACKAGE_DESCRIPTION } from '../version.js';
+import { readPlatformInfo } from './platform.js';
 
 /**
  * 全局 polyfills 配置
@@ -210,19 +211,12 @@ function isVersionAtLeast(version, minimum) {
  * 检测运行环境
  */
 function detectEnvironment() {
-  let info = null;
-  if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
-    try {
-      info = wx.getSystemInfoSync();
-    } catch (error) {
-      info = null;
-    }
-  }
+  const { info } = readPlatformInfo();
 
   return {
     isMiniProgram: typeof wx !== 'undefined',
-    platform: info?.platform || 'unknown',
-    supportWebGL2: Boolean(info?.SDKVersion && isVersionAtLeast(info.SDKVersion, '2.24.0'))
+    platform: info.platform || 'unknown',
+    supportWebGL2: Boolean(info.SDKVersion && isVersionAtLeast(info.SDKVersion, '2.24.0'))
   };
 }
 

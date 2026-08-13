@@ -2,7 +2,7 @@
 
 本路线图用于记录 `threejs-miniprogram-adapter` 从实验适配层走向可信开源项目的迭代顺序。日期和范围会随真实使用反馈调整，但不会以自动化测试代替微信开发者工具或真机证据。
 
-**最近更新：2026-08-13。** 第一阶段的自动化收敛已完成：核心全局对象、WebGL 上下文生命周期、触摸手势、四个示例生命周期，以及远程/本地/内嵌纹理 GLB 路径均已有集成证据。微信开发者工具与真机证据仍待补齐。
+**最近更新：2026-08-13。** 第一阶段的自动化收敛已完成，第二阶段正在推进；平台信息读取已迁移到现代微信 API，并保留旧基础库回退。微信开发者工具与真机证据仍待补齐。
 
 ## 维护原则
 
@@ -14,7 +14,7 @@
 
 ## 当前基线（2026-08）
 
-- `npm run check` 覆盖语法、119 个 Node 测试、TypeScript consumer、publint 和打包检查。
+- `npm run check` 覆盖语法、124 个 Node 测试、TypeScript consumer、publint 和打包检查。
 - CI 覆盖 three.js r160、r174、r183、r185。
 - WebGL2、普通 GLTF/GLB、OrbitControls 和主线程 DRACO 均处于实验支持阶段。
 - 尚未完成微信开发者工具、Android、iOS 的完整验收，也尚未发布到 npm registry。
@@ -34,7 +34,7 @@
 
 目标：减少对停止维护 API 和空壳兼容层的依赖，明确稳定的公共接口。
 
-- [ ] 优先使用 `wx.getWindowInfo()`、`wx.getDeviceInfo()`、`wx.getAppBaseInfo()`，保留旧基础库回退。
+- [x] 优先使用 `wx.getWindowInfo()`、`wx.getDeviceInfo()`、`wx.getAppBaseInfo()`，保留旧基础库回退。
 - [ ] 审核 Fetch、XHR、Blob、URL、Image 的取消、错误和临时文件生命周期。
 - [ ] 审核多页面、多 Canvas 下的 document 与图片工厂归属。
 - [ ] 清理或弃用无实际行为的 `enhance*Loader()`；保留的插件必须有示例和测试。

@@ -18,6 +18,7 @@
 
 - `src/index.js` — 主入口：`adaptForMiniProgram`（包装 canvas → 注入 polyfill → 能力探测延迟到 `inspectWebGL()`，避免在 `THREE.WebGLRenderer` 前锁定上下文属性）、`quickAdapt`、`checkCompatibility`、`waitForCanvas`。
 - `src/adaptor/` — 环境层：
+  - `platform.js` — 统一读取微信平台信息：优先 `getWindowInfo`/`getDeviceInfo`/`getAppBaseInfo`，单次合并读取中信息缺失或异常时至多调用一次 `getSystemInfoSync` 补缺。
   - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video/audio 是模拟实现，VideoTexture 默认不可用。
   - `events/` — Event/EventTarget、触摸→Pointer 转换（`pointer-event.js`）、WXML 触摸桥（`bridge.js`：只维护处理器表，不直赋原生对象 — 微信无"赋属性即事件"机制）。
   - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析；本地文件读取限沙箱（`file://`/`wxfile://`/`USER_DATA_PATH` 前缀，拒绝 `..`）。

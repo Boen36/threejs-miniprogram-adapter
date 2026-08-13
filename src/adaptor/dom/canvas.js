@@ -6,6 +6,7 @@
 import { HTMLElement } from './element.js';
 import { Event } from '../events/event.js';
 import { WebGL2RenderingContextWrapper } from '../webgl/webgl2-context.js';
+import { getWindowMetrics } from '../platform.js';
 
 class HTMLCanvasElement extends HTMLElement {
   constructor(canvas) {
@@ -27,13 +28,8 @@ class HTMLCanvasElement extends HTMLElement {
   _syncSize() {
     if (this._canvas) {
       // 小程序 canvas 的宽高通常是从布局获取的；
-      // wx.getSystemInfoSync 自 2.20.1 起停维护，可能返回空对象，需兜底
-      let info = {};
-      try {
-        info = (typeof wx !== 'undefined' && wx.getSystemInfoSync) ? wx.getSystemInfoSync() : {};
-      } catch {
-        info = {};
-      }
+      // 节点未提供尺寸时读取窗口信息，并保留旧基础库回退。
+      const info = getWindowMetrics();
       this._width = this._canvas.width || info.windowWidth || 375;
       this._height = this._canvas.height || info.windowHeight || 667;
     }

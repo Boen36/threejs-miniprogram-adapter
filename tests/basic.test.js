@@ -133,18 +133,84 @@ describe('compatibility checks', () => {
   test('compares SDK versions numerically', () => {
     globalThis.wx = {
       createSelectorQuery() {},
-      getSystemInfoSync: () => ({ SDKVersion: '2.30.0', platform: 'devtools', version: '1' })
+      getSystemInfoSync: () => ({
+        SDKVersion: '2.30.0',
+        platform: 'devtools',
+        version: '1',
+        windowWidth: 375,
+        windowHeight: 667,
+        pixelRatio: 2
+      })
     };
     const report = checkCompatibility();
     assert.equal(report.compatible, true);
     assert.equal(report.warnings.length, 0);
 
     // WebGL2 需要基础库 >= 2.24.0（低于该版本应给出警告）
-    globalThis.wx.getSystemInfoSync = () => ({ SDKVersion: '2.10.0', platform: 'devtools', version: '1' });
+    globalThis.wx.getSystemInfoSync = () => ({
+      SDKVersion: '2.10.0',
+      platform: 'devtools',
+      version: '1',
+      windowWidth: 375,
+      windowHeight: 667,
+      pixelRatio: 2
+    });
     const older = checkCompatibility();
     assert.equal(older.compatible, true);
     assert.equal(older.warnings.length, 1);
     assert.match(older.warnings[0], /2\.24\.0/);
+  });
+
+  test('prefers modern split information APIs without calling the deprecated fallback', () => {
+    let legacyCalls = 0;
+    globalThis.wx = {
+      createSelectorQuery() {},
+      getWindowInfo: () => ({
+        windowWidth: 320,
+        windowHeight: 640,
+        screenWidth: 360,
+        screenHeight: 720,
+        pixelRatio: 3
+      }),
+      getDeviceInfo: () => ({
+        platform: 'android',
+        model: 'Modern Device',
+        system: 'Android 16'
+      }),
+      getAppBaseInfo: () => ({
+        SDKVersion: '2.30.0',
+        version: '9.0.0',
+        language: 'zh_CN'
+      }),
+      getSystemInfoSync() {
+        legacyCalls++;
+        throw new Error('deprecated API should not be called');
+      }
+    };
+    const { canvas } = createMockCanvas();
+    canvas.width = 0;
+    canvas.height = 0;
+    const globals = {};
+    const result = adaptForMiniProgram(canvas, { globalObject: globals });
+
+    try {
+      assert.deepEqual(result.updateSize(), { width: 320, height: 640, pixelRatio: 3 });
+      assert.equal(result.canvas.width, 320);
+      assert.equal(result.canvas.height, 640);
+      assert.equal(result.environment.platform, 'android');
+      assert.equal(result.environment.supportWebGL2, true);
+      assert.equal(globals.window.innerWidth, 320);
+      assert.equal(globals.window.navigator.platform, 'android');
+
+      const report = checkCompatibility();
+      assert.equal(report.compatible, true);
+      assert.equal(report.info.SDKVersion, '2.30.0');
+      assert.equal(report.info.platform, 'android');
+      assert.equal(report.info.version, '9.0.0');
+      assert.equal(legacyCalls, 0);
+    } finally {
+      result.dispose();
+    }
   });
 
   test('marks missing required wx APIs as incompatible', () => {

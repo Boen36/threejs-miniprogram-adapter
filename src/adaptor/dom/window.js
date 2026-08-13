@@ -3,39 +3,21 @@
  * 模拟浏览器 window 对象的核心功能
  */
 
-let systemInfo = null;
-
-function getSystemInfo() {
-  if (!systemInfo && typeof wx !== 'undefined' && wx.getSystemInfoSync) {
-    try {
-      systemInfo = wx.getSystemInfoSync();
-    } catch (e) {
-      console.warn('Failed to get system info:', e);
-      systemInfo = {
-        windowWidth: 375,
-        windowHeight: 667,
-        pixelRatio: 2
-      };
-    }
-  }
-  return systemInfo || {
-    windowWidth: 375,
-    windowHeight: 667,
-    pixelRatio: 2
-  };
-}
+import { readPlatformInfo } from '../platform.js';
 
 class Window {
   constructor() {
-    const info = getSystemInfo();
-    this.innerWidth = info.windowWidth;
-    this.innerHeight = info.windowHeight;
-    this.devicePixelRatio = info.pixelRatio;
+    const { info } = readPlatformInfo();
+    const windowWidth = info.windowWidth || 375;
+    const windowHeight = info.windowHeight || 667;
+    this.innerWidth = windowWidth;
+    this.innerHeight = windowHeight;
+    this.devicePixelRatio = info.pixelRatio || 2;
     this.screen = {
-      width: info.screenWidth || info.windowWidth,
-      height: info.screenHeight || info.windowHeight,
-      availWidth: info.windowWidth,
-      availHeight: info.windowHeight
+      width: info.screenWidth || windowWidth,
+      height: info.screenHeight || windowHeight,
+      availWidth: windowWidth,
+      availHeight: windowHeight
     };
     this.location = {
       href: '',

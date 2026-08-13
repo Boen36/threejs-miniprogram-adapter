@@ -221,7 +221,7 @@ loader.load('https://example.com/model-draco.glb', gltf => scene.add(gltf.scene)
 
 - `canvas`：供 `THREE.WebGLRenderer` 使用的 Canvas。
 - `touchEventHandlers`：WXML 事件转发目标。
-- `updateSize()`：读取建议的窗口尺寸与像素比。
+- `updateSize()`：优先通过 `wx.getWindowInfo()` 读取建议的窗口尺寸与像素比；旧基础库回退到 `getSystemInfoSync()`。
 - `inspectWebGL()`：在 renderer 创建后读取 WebGL 能力。
 - `webglReport`：最近一次能力报告，未检查时为 `null`。
 - `dispose()`：解绑触摸桥并移除 document 中的 Canvas 引用。
@@ -275,6 +275,7 @@ CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工
 - `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。
 - DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
 - `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
+- 平台信息优先读取 `getWindowInfo()`、`getDeviceInfo()`、`getAppBaseInfo()`；单次合并读取中，仅在现代 API 缺失、返回不完整或抛错时调用一次 `getSystemInfoSync()` 补缺。
 - 多页面或多 Canvas 可用，但仍建议每页独立创建并在 `onUnload` 调用 `dispose()`。
 
 ## 贡献
