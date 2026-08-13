@@ -24,7 +24,7 @@
   - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理，`constructor.name` 伪装为 WebGL2RenderingContext 供 three 判定，`_replaceContext` 支持热替换）、扩展与能力检测。
 - `src/plugins/loaders.js` — 绕过 three.js 图片路径、走 wx 图片层；`createFileLoader`/`resolvePath`/各 `enhance*Loader`。
 - `src/plugins/draco-loader.js` — `MiniProgramDRACOLoader`：主线程 WASM 解码（不走 Worker），实现 GLTFLoader `setDRACOLoader` 所需的 `preload`/`decodeDracoFile`/`dispose` 契约；decoder 工厂与 WASM 由业务方注入。解码逻辑移植自 three DRACOLoader 的 Worker 实现。
-- `src/plugins/controls.js` — 真正有用的是 `createTouchControls`/`createGestureControls`；`adaptOrbitControls` 等多数是空壳，OrbitControls 靠触摸→Pointer 桥工作。
+- `src/plugins/controls.js` — 真正有用的是 `createTouchControls`/`createGestureControls`；`adaptPointerLockControls`（补丁 lock/unlock 为警告）与 `adaptDeviceOrientationControls`（wx 设备运动桥，connect/disconnect 成对注册/注销）有真实行为。OrbitControls/Trackball 等靠触摸→Pointer 桥工作，无适配函数（2026-08 已删除空壳）。
 - `types/index.d.ts` — 公共类型。运行时导出与 .d.ts 必须同步（曾有漂移，已修复）。
 - `examples/` — 可导入微信开发者工具的示例工程（basic/controls/loaders/draco 四个页面；draco 页面自带 decoder 资源 `libs/draco/` 与压缩模型 `assets/cube-draco.glb`）。
 

@@ -65,10 +65,6 @@ void namespaceDracoLoader;
 
 // —— Controls 插件：adapt 系列与手势控制器 ——
 ControlPlugins.adaptAllControls({});
-ControlPlugins.adaptOrbitControls({});
-ControlPlugins.adaptTrackballControls({});
-ControlPlugins.adaptFlyControls({});
-ControlPlugins.adaptFirstPersonControls({});
 ControlPlugins.adaptPointerLockControls({});
 ControlPlugins.adaptDeviceOrientationControls({});
 

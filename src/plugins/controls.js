@@ -1,21 +1,12 @@
 /**
  * Controls 插件适配
- * 为 three.js 的各种 Controls 提供小程序触摸事件支持
+ * 为 three.js 的 Controls 提供小程序环境支持。
+ *
+ * OrbitControls / TrackballControls / FlyControls / FirstPersonControls
+ * 不需要显式适配：它们基于 Pointer Events 工作，适配器的
+ * WXML touch* -> PointerEvent 桥已提供所需输入。
  */
 
-/**
- * 适配 OrbitControls 到小程序
- * @param {Object} THREE - three.js 实例
- */
-function adaptOrbitControls(THREE) {
-  if (!THREE || !THREE.OrbitControls) {
-    console.warn('THREE.OrbitControls not available');
-    return;
-  }
-
-  // OrbitControls 基于 Pointer Events 工作，适配器的事件桥
-  // （WXML touch* -> PointerEvent）已提供所需输入，无需额外适配。
-}
 
 /**
  * 创建小程序优化的触摸控制器
@@ -140,41 +131,10 @@ function createTouchControls(camera, domElement, options = {}) {
 }
 
 /**
- * 适配 TrackballControls
- */
-function adaptTrackballControls(THREE) {
-  if (!THREE || !THREE.TrackballControls) {
-    return;
-  }
-
-  // TrackballControls 同样依赖 Pointer Events
-  // 适配器的事件桥接应该已经处理了
-}
-
-/**
- * 适配 FlyControls
- */
-function adaptFlyControls(THREE) {
-  if (!THREE || !THREE.FlyControls) {
-    return;
-  }
-
-  // FlyControls 使用键盘事件，小程序支持有限
-}
-
-/**
- * 适配 FirstPersonControls
- */
-function adaptFirstPersonControls(THREE) {
-  if (!THREE || !THREE.FirstPersonControls) {
-    return;
-  }
-}
-
-/**
  * 适配 PointerLockControls
  * 小程序不支持 Pointer Lock API
  */
+
 function adaptPointerLockControls(THREE) {
   if (!THREE || !THREE.PointerLockControls) {
     return;
@@ -207,16 +167,21 @@ function adaptDeviceOrientationControls(THREE) {
   const originalConnect = THREE.DeviceOrientationControls.prototype.connect;
   THREE.DeviceOrientationControls.prototype.connect = function() {
     if (typeof wx !== 'undefined' && wx.onDeviceMotionChange) {
+      // 幂等：重复 connect 不叠加监听
+      if (this._wxDeviceMotionHandler) return;
+
       // 使用小程序的设备运动 API
-      wx.onDeviceMotionChange((res) => {
+      const handler = (res) => {
         // 转换数据格式
         this.deviceOrientation = {
           alpha: res.alpha,
           beta: res.beta,
           gamma: res.gamma
         };
-      });
+      };
+      this._wxDeviceMotionHandler = handler;
 
+      wx.onDeviceMotionChange(handler);
       wx.startDeviceMotionListening({
         interval: 'game'
       });
@@ -232,6 +197,10 @@ function adaptDeviceOrientationControls(THREE) {
   THREE.DeviceOrientationControls.prototype.disconnect = function() {
     if (typeof wx !== 'undefined' && wx.stopDeviceMotionListening) {
       wx.stopDeviceMotionListening();
+      if (this._wxDeviceMotionHandler && wx.offDeviceMotionChange) {
+        wx.offDeviceMotionChange(this._wxDeviceMotionHandler);
+        this._wxDeviceMotionHandler = null;
+      }
     }
 
     if (originalDisconnect) {
@@ -249,10 +218,6 @@ function adaptAllControls(THREE) {
     return;
   }
 
-  adaptOrbitControls(THREE);
-  adaptTrackballControls(THREE);
-  adaptFlyControls(THREE);
-  adaptFirstPersonControls(THREE);
   adaptPointerLockControls(THREE);
   adaptDeviceOrientationControls(THREE);
 }
@@ -298,11 +263,7 @@ function createGestureControls(camera, domElement, options = {}) {
 }
 
 export {
-  adaptOrbitControls,
   createTouchControls,
-  adaptTrackballControls,
-  adaptFlyControls,
-  adaptFirstPersonControls,
   adaptPointerLockControls,
   adaptDeviceOrientationControls,
   adaptAllControls,

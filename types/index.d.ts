@@ -401,10 +401,6 @@ export interface TouchControls {
 // Controls 插件
 export namespace ControlPlugins {
   function adaptAllControls(THREE: any): void;
-  function adaptOrbitControls(THREE: any): void;
-  function adaptTrackballControls(THREE: any): void;
-  function adaptFlyControls(THREE: any): void;
-  function adaptFirstPersonControls(THREE: any): void;
   function adaptPointerLockControls(THREE: any): void;
   function adaptDeviceOrientationControls(THREE: any): void;
   function createTouchControls(
