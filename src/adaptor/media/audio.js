@@ -1,485 +1,255 @@
 /**
- * Web Audio API 适配（有限支持）
- * 小程序使用 InnerAudioContext 实现基础音频播放
+ * 基础音频元素适配。
+ *
+ * 这里只桥接 wx.createInnerAudioContext；不模拟 Web Audio 图、解码器或分析器。
  */
 
-import { EventTarget } from '../events/event-target.js';
+import { HTMLElement } from '../dom/element.js';
 
-/**
- * AudioContext 模拟
- * 小程序不支持完整的 Web Audio API，仅提供基础播放功能
- */
-class AudioContext extends EventTarget {
-  constructor() {
-    super();
+const HAVE_NOTHING = 0;
+const HAVE_ENOUGH_DATA = 4;
+const NETWORK_EMPTY = 0;
+const NETWORK_IDLE = 1;
+const NETWORK_LOADING = 2;
+const NETWORK_NO_SOURCE = 3;
 
-    this.state = 'suspended';
-    this.sampleRate = 44100;
-    this.currentTime = 0;
-    this.destination = null;
-    this.listener = null;
-
-    this._startTime = Date.now();
-  }
-
-  resume() {
-    return new Promise((resolve, reject) => {
-      this.state = 'running';
-      this._startTime = Date.now();
-      if (this.onstatechange) {
-        this.onstatechange();
-      }
-      resolve();
-    });
-  }
-
-  suspend() {
-    return new Promise((resolve, reject) => {
-      this.state = 'suspended';
-      if (this.onstatechange) {
-        this.onstatechange();
-      }
-      resolve();
-    });
-  }
-
-  close() {
-    return new Promise((resolve, reject) => {
-      this.state = 'closed';
-      if (this.onstatechange) {
-        this.onstatechange();
-      }
-      resolve();
-    });
-  }
-
-  createBufferSource() {
-    return new AudioBufferSourceNode(this);
-  }
-
-  createBuffer(numberOfChannels, length, sampleRate) {
-    return new AudioBuffer({
-      numberOfChannels,
-      length,
-      sampleRate
-    });
-  }
-
-  createGain() {
-    return new GainNode(this);
-  }
-
-  createPanner() {
-    return new PannerNode(this);
-  }
-
-  createAnalyser() {
-    return new AnalyserNode(this);
-  }
-
-  decodeAudioData(arrayBuffer, successCallback, errorCallback) {
-    return new Promise((resolve, reject) => {
-      // 小程序无法直接解码音频数据
-      const error = new Error('Audio decoding is not supported in mini program');
-      if (errorCallback) {
-        errorCallback(error);
-      }
-      reject(error);
-    });
-  }
-
-  // 获取当前时间（秒）
-  getCurrentTime() {
-    return (Date.now() - this._startTime) / 1000;
-  }
-}
-
-/**
- * AudioBuffer 类
- */
-class AudioBuffer {
-  constructor(options = {}) {
-    this.numberOfChannels = options.numberOfChannels || 1;
-    this.length = options.length || 0;
-    this.sampleRate = options.sampleRate || 44100;
-    this.duration = this.length / this.sampleRate;
-
-    // 创建通道数据
-    this._channels = [];
-    for (let i = 0; i < this.numberOfChannels; i++) {
-      this._channels.push(new Float32Array(this.length));
-    }
-  }
-
-  getChannelData(channel) {
-    if (channel < 0 || channel >= this.numberOfChannels) {
-      throw new Error('Invalid channel index');
-    }
-    return this._channels[channel];
-  }
-
-  copyFromChannel(destination, channelNumber, startInChannel = 0) {
-    const channel = this.getChannelData(channelNumber);
-    destination.set(channel.subarray(startInChannel, startInChannel + destination.length));
-  }
-
-  copyToChannel(source, channelNumber, startInChannel = 0) {
-    const channel = this.getChannelData(channelNumber);
-    channel.set(source, startInChannel);
-  }
-}
-
-/**
- * AudioNode 基类
- */
-class AudioNode extends EventTarget {
-  constructor(context) {
-    super();
-    this.context = context;
-    this.numberOfInputs = 1;
-    this.numberOfOutputs = 1;
-    this.channelCount = 2;
-    this.channelCountMode = 'max';
-    this.channelInterpretation = 'speakers';
-
-    this._connectedNodes = [];
-  }
-
-  connect(destination, outputIndex = 0, inputIndex = 0) {
-    this._connectedNodes.push({
-      node: destination,
-      outputIndex,
-      inputIndex
-    });
-    return destination;
-  }
-
-  disconnect(destination) {
-    if (destination) {
-      const index = this._connectedNodes.findIndex(n => n.node === destination);
-      if (index > -1) {
-        this._connectedNodes.splice(index, 1);
-      }
-    } else {
-      this._connectedNodes = [];
-    }
-  }
-}
-
-/**
- * AudioBufferSourceNode 类
- */
-class AudioBufferSourceNode extends AudioNode {
-  constructor(context) {
-    super(context);
-    this.buffer = null;
-    this.detune = { value: 0 };
-    this.loop = false;
-    this.loopEnd = 0;
-    this.loopStart = 0;
-    this.playbackRate = { value: 1 };
-
-    this._innerAudio = null;
-  }
-
-  start(when = 0, offset = 0, duration) {
-    // 使用小程序 InnerAudioContext 播放
-    if (typeof wx !== 'undefined' && wx.createInnerAudioContext) {
-      this._innerAudio = wx.createInnerAudioContext();
-
-      // 如果有 buffer，需要使用 data URL 或临时文件
-      // 这里简化处理
-
-      if (this.onended) {
-        this._innerAudio.onEnded(() => {
-          this.onended();
-        });
-      }
-
-      this._innerAudio.play();
-    }
-  }
-
-  stop(when = 0) {
-    if (this._innerAudio) {
-      this._innerAudio.stop();
-    }
-  }
-}
-
-/**
- * GainNode 类
- */
-class GainNode extends AudioNode {
-  constructor(context) {
-    super(context);
-    this.gain = { value: 1 };
-  }
-}
-
-/**
- * PannerNode 类
- */
-class PannerNode extends AudioNode {
-  constructor(context) {
-    super(context);
-    this.panningModel = 'equalpower';
-    this.distanceModel = 'inverse';
-    this.refDistance = 1;
-    this.maxDistance = 10000;
-    this.rolloffFactor = 1;
-    this.coneInnerAngle = 360;
-    this.coneOuterAngle = 360;
-    this.coneOuterGain = 0;
-
-    this.positionX = { value: 0 };
-    this.positionY = { value: 0 };
-    this.positionZ = { value: 0 };
-    this.orientationX = { value: 0 };
-    this.orientationY = { value: 0 };
-    this.orientationZ = { value: 0 };
-  }
-
-  setPosition(x, y, z) {
-    this.positionX.value = x;
-    this.positionY.value = y;
-    this.positionZ.value = z;
-  }
-
-  setOrientation(x, y, z) {
-    this.orientationX.value = x;
-    this.orientationY.value = y;
-    this.orientationZ.value = z;
-  }
-}
-
-/**
- * AnalyserNode 类
- */
-class AnalyserNode extends AudioNode {
-  constructor(context) {
-    super(context);
-    this.fftSize = 2048;
-    this.frequencyBinCount = 1024;
-    this.minDecibels = -100;
-    this.maxDecibels = -30;
-    this.smoothingTimeConstant = 0.8;
-  }
-
-  getFloatFrequencyData(array) {
-    // 模拟数据
-    for (let i = 0; i < array.length; i++) {
-      array[i] = this.minDecibels;
-    }
-  }
-
-  getByteFrequencyData(array) {
-    // 模拟数据
-    for (let i = 0; i < array.length; i++) {
-      array[i] = 0;
-    }
-  }
-
-  getFloatTimeDomainData(array) {
-    // 模拟数据
-    for (let i = 0; i < array.length; i++) {
-      array[i] = 0;
-    }
-  }
-
-  getByteTimeDomainData(array) {
-    // 模拟数据
-    for (let i = 0; i < array.length; i++) {
-      array[i] = 128;
-    }
-  }
-}
-
-/**
- * HTMLAudioElement 类
- * 模拟浏览器音频元素
- */
-class HTMLAudioElement extends EventTarget {
+class HTMLAudioElement extends HTMLElement {
   constructor(url) {
-    super();
+    super('audio');
 
-    this.src = url || '';
-    this.currentSrc = '';
-    this.crossOrigin = null;
-    this.preload = 'auto';
-    this.autoplay = false;
-    this.loop = false;
-    this.muted = false;
-    this.defaultMuted = false;
-    this.controls = false;
-    this.volume = 1;
-
+    this._src = '';
+    this._currentSrc = '';
+    this._crossOrigin = null;
+    this._preload = 'auto';
+    this._autoplay = false;
+    this._loop = false;
+    this._muted = false;
+    this._defaultMuted = false;
+    this._controls = false;
+    this._volume = 1;
     this._duration = 0;
     this._currentTime = 0;
     this._paused = true;
     this._ended = false;
-    this._readyState = 0;
-    this._networkState = 0;
-
+    this._readyState = HAVE_NOTHING;
+    this._networkState = NETWORK_EMPTY;
     this._innerAudio = null;
 
     if (url) {
+      this.src = url;
       this.load();
     }
   }
 
-  get duration() {
-    return this._duration;
+  get src() { return this._src; }
+  set src(value) {
+    const nextSource = String(value || '');
+    if (nextSource === this._src) return;
+    this._destroyInnerAudio();
+    this._src = nextSource;
+    this._currentSrc = '';
+    this._paused = true;
+    this._ended = false;
+    this._readyState = HAVE_NOTHING;
+    this._networkState = nextSource ? NETWORK_LOADING : NETWORK_EMPTY;
   }
 
-  get currentTime() {
-    return this._currentTime;
+  get currentSrc() { return this._currentSrc; }
+
+  get crossOrigin() { return this._crossOrigin; }
+  set crossOrigin(value) { this._crossOrigin = value; }
+
+  get preload() { return this._preload; }
+  set preload(value) { this._preload = String(value || ''); }
+
+  get autoplay() { return this._autoplay; }
+  set autoplay(value) {
+    this._autoplay = Boolean(value);
+    if (this._innerAudio) this._innerAudio.autoplay = this._autoplay;
   }
 
+  get loop() { return this._loop; }
+  set loop(value) {
+    this._loop = Boolean(value);
+    if (this._innerAudio) this._innerAudio.loop = this._loop;
+  }
+
+  get muted() { return this._muted; }
+  set muted(value) {
+    this._muted = Boolean(value);
+    this._syncVolume();
+  }
+
+  get defaultMuted() { return this._defaultMuted; }
+  set defaultMuted(value) { this._defaultMuted = Boolean(value); }
+
+  get controls() { return this._controls; }
+  set controls(value) { this._controls = Boolean(value); }
+
+  get volume() { return this._volume; }
+  set volume(value) {
+    const numericValue = Number(value);
+    this._volume = Number.isFinite(numericValue)
+      ? Math.max(0, Math.min(1, numericValue))
+      : 1;
+    this._syncVolume();
+  }
+
+  get duration() { return this._duration; }
+
+  get currentTime() { return this._currentTime; }
   set currentTime(value) {
-    this._currentTime = value;
+    const numericValue = Number(value);
+    this._currentTime = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+    this._innerAudio?.seek?.(this._currentTime);
+  }
+
+  get paused() { return this._paused; }
+  get ended() { return this._ended; }
+  get readyState() { return this._readyState; }
+  get networkState() { return this._networkState; }
+
+  _syncVolume() {
     if (this._innerAudio) {
-      this._innerAudio.seek(value);
+      this._innerAudio.volume = this._muted ? 0 : this._volume;
     }
   }
 
-  get paused() {
-    return this._paused;
+  _emit(type, details = {}) {
+    const event = { type, ...details };
+    const handler = this[`on${type}`];
+    if (typeof handler === 'function') handler.call(this, event);
+    this.dispatchEvent(event);
   }
 
-  get ended() {
-    return this._ended;
-  }
+  _bindInnerAudio(innerAudio) {
+    const isCurrent = () => this._innerAudio === innerAudio;
 
-  get readyState() {
-    return this._readyState;
-  }
-
-  load() {
-    if (!this.src) return;
-
-    if (typeof wx !== 'undefined' && wx.createInnerAudioContext) {
-      this._innerAudio = wx.createInnerAudioContext();
-      this._innerAudio.src = this.src;
-      this._innerAudio.loop = this.loop;
-      this._innerAudio.volume = this.volume;
-
-      this._innerAudio.onCanplay(() => {
-        this._readyState = 4;
-        this._duration = this._innerAudio.duration;
-        if (this.oncanplay) this.oncanplay();
-        this.dispatchEvent({ type: 'canplay' });
-      });
-
-      this._innerAudio.onPlay(() => {
-        this._paused = false;
-        if (this.onplay) this.onplay();
-        this.dispatchEvent({ type: 'play' });
-      });
-
-      this._innerAudio.onPause(() => {
-        this._paused = true;
-        if (this.onpause) this.onpause();
-        this.dispatchEvent({ type: 'pause' });
-      });
-
-      this._innerAudio.onEnded(() => {
-        this._paused = true;
-        this._ended = true;
-        if (this.onended) this.onended();
-        this.dispatchEvent({ type: 'ended' });
-      });
-
-      this._innerAudio.onError((err) => {
-        if (this.onerror) this.onerror(err);
-        this.dispatchEvent({ type: 'error', error: err });
-      });
-
-      this._innerAudio.onTimeUpdate(() => {
-        this._currentTime = this._innerAudio.currentTime;
-      });
-    }
-  }
-
-  play() {
-    return new Promise((resolve, reject) => {
-      if (!this._innerAudio) {
-        this.load();
-      }
-
-      if (this._innerAudio) {
-        this._innerAudio.play();
-        resolve();
-      } else {
-        reject(new Error('Audio context not available'));
-      }
+    innerAudio.onCanplay?.(() => {
+      if (!isCurrent()) return;
+      this._readyState = HAVE_ENOUGH_DATA;
+      this._networkState = NETWORK_IDLE;
+      this._duration = Number(innerAudio.duration) || 0;
+      this._emit('canplay');
+    });
+    innerAudio.onPlay?.(() => {
+      if (!isCurrent()) return;
+      this._paused = false;
+      this._ended = false;
+      this._emit('play');
+    });
+    innerAudio.onPause?.(() => {
+      if (!isCurrent()) return;
+      this._paused = true;
+      this._emit('pause');
+    });
+    innerAudio.onEnded?.(() => {
+      if (!isCurrent()) return;
+      this._paused = true;
+      this._ended = true;
+      this._emit('ended');
+    });
+    innerAudio.onError?.((error) => {
+      if (!isCurrent()) return;
+      this._paused = true;
+      this._networkState = NETWORK_NO_SOURCE;
+      this._emit('error', { error });
+    });
+    innerAudio.onTimeUpdate?.(() => {
+      if (!isCurrent()) return;
+      this._currentTime = Number(innerAudio.currentTime) || 0;
+      this._emit('timeupdate');
     });
   }
 
-  pause() {
-    if (this._innerAudio) {
-      this._innerAudio.pause();
+  load() {
+    this._destroyInnerAudio();
+    this._readyState = HAVE_NOTHING;
+    this._networkState = this._src ? NETWORK_LOADING : NETWORK_EMPTY;
+    this._duration = 0;
+    this._currentTime = 0;
+    this._ended = false;
+    this._paused = true;
+    this._currentSrc = '';
+
+    if (!this._src) return;
+    if (typeof wx === 'undefined' || typeof wx.createInnerAudioContext !== 'function') {
+      this._networkState = NETWORK_NO_SOURCE;
+      return;
     }
+
+    const innerAudio = wx.createInnerAudioContext();
+    this._innerAudio = innerAudio;
+    innerAudio.loop = this._loop;
+    innerAudio.autoplay = this._autoplay;
+    this._syncVolume();
+    this._bindInnerAudio(innerAudio);
+    innerAudio.src = this._src;
+    this._currentSrc = this._src;
+  }
+
+  play() {
+    if (!this._innerAudio) this.load();
+    if (!this._innerAudio) {
+      return Promise.reject(new Error(
+        'Audio playback requires wx.createInnerAudioContext and a non-empty src'
+      ));
+    }
+
+    try {
+      this._innerAudio.play();
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  pause() {
+    this._innerAudio?.pause?.();
+    if (!this._innerAudio) this._paused = true;
   }
 
   canPlayType(type) {
-    const supported = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/aac', 'audio/mp4'];
-    if (supported.some(t => type.includes(t))) {
-      return 'probably';
-    }
-    return '';
+    const normalized = String(type || '').toLowerCase();
+    const supported = [
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
+      'audio/wave',
+      'audio/aac',
+      'audio/mp4'
+    ];
+    return supported.some(candidate => normalized.startsWith(candidate)) ? 'maybe' : '';
   }
 
-  // 快捷事件处理器
-  get onloadeddata() {
-    return this._onloadeddata;
-  }
-  set onloadeddata(fn) {
-    this._onloadeddata = fn;
+  _destroyInnerAudio() {
+    const innerAudio = this._innerAudio;
+    this._innerAudio = null;
+    innerAudio?.destroy?.();
   }
 
-  get oncanplay() {
-    return this._oncanplay;
-  }
-  set oncanplay(fn) {
-    this._oncanplay = fn;
-  }
-
-  get onplay() {
-    return this._onplay;
-  }
-  set onplay(fn) {
-    this._onplay = fn;
+  destroy() {
+    this._destroyInnerAudio();
+    this._paused = true;
+    this._readyState = HAVE_NOTHING;
+    this._networkState = NETWORK_EMPTY;
+    this._currentSrc = '';
   }
 
-  get onpause() {
-    return this._onpause;
-  }
-  set onpause(fn) {
-    this._onpause = fn;
-  }
-
-  get onended() {
-    return this._onended;
-  }
-  set onended(fn) {
-    this._onended = fn;
+  remove() {
+    this.destroy();
+    if (this._parent) this._parent.removeChild(this);
   }
 }
 
-// 别名
+HTMLAudioElement.HAVE_NOTHING = HAVE_NOTHING;
+HTMLAudioElement.HAVE_ENOUGH_DATA = HAVE_ENOUGH_DATA;
+HTMLAudioElement.NETWORK_EMPTY = NETWORK_EMPTY;
+HTMLAudioElement.NETWORK_IDLE = NETWORK_IDLE;
+HTMLAudioElement.NETWORK_LOADING = NETWORK_LOADING;
+HTMLAudioElement.NETWORK_NO_SOURCE = NETWORK_NO_SOURCE;
+
 const Audio = HTMLAudioElement;
 
-export {
-  AudioContext,
-  AudioBuffer,
-  AudioNode,
-  AudioBufferSourceNode,
-  GainNode,
-  PannerNode,
-  AnalyserNode,
-  HTMLAudioElement,
-  Audio
-};
-
-export default AudioContext;
+export { HTMLAudioElement, Audio };
+export default HTMLAudioElement;

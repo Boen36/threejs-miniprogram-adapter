@@ -19,8 +19,9 @@
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-lines=78 --test-coverage-branches=75 --test-coverage-functions=57 tests/*.test.js",
     "check:syntax": "find src examples tests -path '*/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check",
-    "check:types": "tsc --noEmit --strict --target ES2020 --module NodeNext --moduleResolution NodeNext tests/types.test.ts",
+    "check:types": "node node_modules/typescript/lib/tsc.js --noEmit --strict --target ES2020 --module NodeNext --moduleResolution NodeNext tests/types.test.ts",
     "check:package": "publint && npm pack --dry-run",
     "check": "npm run check:syntax && npm test && npm run check:types && npm run check:package",
     "prepublishOnly": "npm run check"
@@ -51,6 +52,6 @@
   },
   "homepage": "https://github.com/Boen36/threejs-miniprogram-adapter#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.17.0"
   }
 }

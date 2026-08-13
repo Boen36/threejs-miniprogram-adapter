@@ -11,7 +11,7 @@
 ## 环境
 
 - 本机 node/npm 不在默认 PATH：`export PATH="/opt/homebrew/opt/node@24/bin:$PATH"`（v24.15.0）。
-- 完整检查：`npm run check`（语法 → 测试 → types 编译 → publint/pack）。CI 额外跑 three r160/r174/r183/r185 矩阵。
+- 完整检查：`npm run check`（语法 → 测试 → types 编译 → publint/pack）。CI 精确跑最低 Node 18.17.0，并覆盖 Node 20/22/24 与 three r160/r174/r183/r185；Node 24 另跑 `npm run test:coverage`。
 - 测试：`npm test`（`node --test`）。测试用手写的 wx/canvas mock（tests/basic.test.js:23-84），不依赖真机。
 
 ## 架构速览（文件级）
@@ -19,9 +19,10 @@
 - `src/index.js` — 主入口：`adaptForMiniProgram`（包装 canvas → 注入 polyfill → 能力探测延迟到 `inspectWebGL()`，避免在 `THREE.WebGLRenderer` 前锁定上下文属性）、`quickAdapt`、`checkCompatibility`、`waitForCanvas`。
 - `src/adaptor/` — 环境层：
   - `platform.js` — 统一读取微信平台信息：优先 `getWindowInfo`/`getDeviceInfo`/`getAppBaseInfo`，单次合并读取中信息缺失或异常时至多调用一次 `getSystemInfoSync` 补缺。
-  - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。每个 `adaptForMiniProgram` 实例拥有独立 Document 和 Canvas 图片工厂；共享 `globalObject` 时按 adapter 栈激活/恢复全局 document/Image。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video/audio 是模拟实现，VideoTexture 默认不可用。
+  - `dom/` — 最小 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。每个 `adaptForMiniProgram` 实例拥有独立 Document 和 Canvas 图片工厂；共享 `globalObject` 时按 adapter 栈激活/恢复全局 document/Image。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video 是明确拒绝播放的兼容形状，VideoTexture 不支持。
   - `events/` — Event/EventTarget、触摸→Pointer 转换（`pointer-event.js`）、WXML 触摸桥（`bridge.js`：只维护处理器表，不直赋原生对象 — 微信无"赋属性即事件"机制）。
   - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析；请求与 FileReader 用操作令牌隔离取消后的晚到回调，本地文件读取限沙箱（`file://`/`wxfile://`/`USER_DATA_PATH` 前缀，拒绝 `..`）。
+  - `media/audio.js` — 只桥接 `wx.createInnerAudioContext` 的基础 `Audio`/`HTMLAudioElement`，支持播放、属性/事件同步与 `destroy()`；不注入或模拟 Web Audio API。
   - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理，`constructor.name` 伪装为 WebGL2RenderingContext 供 three 判定，`_replaceContext` 支持热替换）、扩展与能力检测。
 - `src/plugins/loaders.js` — 保留显式图片 helper（可传 `{ document: adapter.document }` 固定 Canvas 工厂）；标准 three.js Loader 由环境层支持。`enhance*Loader` 是无原型副作用的一次性告警弃用层，`createFileLoader`/`resolvePath`/`createCachedLoader` 仅作迁移兼容。
 - `src/plugins/draco-loader.js` — `MiniProgramDRACOLoader`：主线程 WASM 解码（不走 Worker），实现 GLTFLoader `setDRACOLoader` 所需的 `preload`/`decodeDracoFile`/`dispose` 契约；decoder 工厂与 WASM 由业务方注入。解码逻辑移植自 three DRACOLoader 的 Worker 实现。
@@ -46,6 +47,7 @@
 - `createObjectURL` 临时文件按 50 个 / 50MB LRU 回收；单个超限 Blob 在创建当次受保护，使用方仍需及时 `revokeObjectURL()`。
 - 多个 adapter 共用 `globalThis` 时只有栈顶实例的 document/Image 是全局当前值；后台并发创建图片需使用隔离的 `globalObject`，或向支持的 Loader helper 显式传入实例 document。
 - `LoaderPlugins.enhance*Loader()` 不再改写 three.js 原型；标准 Loader 在 `adaptForMiniProgram()` 后直接使用，旧入口仅保留弃用告警。
+- `Audio` 只提供 `InnerAudioContext` 基础播放，页面退出需 `destroy()`；`AudioContext`、three.js Audio/PositionalAudio 与 VideoTexture 不支持。
 - 尚未发布到 npm；README 安装说明目前用 GitHub 直装。
 - 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB、销毁重进页面。
 

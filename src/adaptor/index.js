@@ -19,7 +19,7 @@ import { Blob, File, FileReader, btoa } from './network/blob.js';
 import { WebGL2RenderingContextWrapper } from './webgl/webgl2-context.js';
 import { WebGLExtensions, detectWebGLExtensions, checkMiniProgramLimitations } from './webgl/extensions.js';
 import { URL as URLClass, URLSearchParams, createObjectURL, revokeObjectURL } from './media/url.js';
-import { AudioContext, Audio, HTMLAudioElement } from './media/audio.js';
+import { Audio, HTMLAudioElement } from './media/audio.js';
 import { VERSION, PACKAGE_NAME, PACKAGE_DESCRIPTION } from '../version.js';
 import { readPlatformInfo } from './platform.js';
 
@@ -137,8 +137,7 @@ function installPolyfills(globalObject = globalThis, config = {}) {
   setDefault(globalObject, 'URL', URLClass);
   setDefault(globalObject, 'URLSearchParams', URLSearchParams);
 
-  // Audio
-  setDefault(globalObject, 'AudioContext', AudioContext);
+  // 基础音频播放。Web Audio 图不做伪实现；宿主若已有原生 AudioContext 则保持原值。
   setDefault(globalObject, 'Audio', Audio);
   setDefault(globalObject, 'HTMLAudioElement', HTMLAudioElement);
 
@@ -188,7 +187,8 @@ function installPolyfills(globalObject = globalThis, config = {}) {
     'KeyboardEvent', 'WheelEvent', 'PointerEvent',
     'fetch', 'Request', 'Response', 'Headers', 'XMLHttpRequest', 'FormData', 'Blob', 'File',
     'FileReader', 'DOMException', 'URL', 'URLSearchParams',
-    'AudioContext', 'Audio', 'HTMLAudioElement', 'WebGL2RenderingContext', 'WebAssembly',
+    'AudioContext', 'webkitAudioContext', 'Audio', 'HTMLAudioElement',
+    'WebGL2RenderingContext', 'WebAssembly',
     'location', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame',
     'btoa', 'atob'
   ];
@@ -306,7 +306,6 @@ export {
   // Media
   URLClass as URL,
   URLSearchParams,
-  AudioContext,
   Audio,
   // WebGL
   WebGL2RenderingContextWrapper,

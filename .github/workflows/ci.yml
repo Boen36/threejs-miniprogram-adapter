@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - node: 20
+          - node: 18.17.0
             three: 0.160.0
-          - node: 22
+          - node: 20
             three: 0.174.0
           - node: 22
             three: 0.183.1
@@ -36,3 +36,23 @@ jobs:
       - name: Select three.js compatibility target
         run: npm install --no-save --package-lock=false three@${{ matrix.three }}
       - run: npm run check
+
+  coverage:
+    name: Core source coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Enforce and record src coverage
+        run: npm run test:coverage | tee coverage.txt
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          echo '### Core source coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          grep 'all files' coverage.txt | tail -1 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

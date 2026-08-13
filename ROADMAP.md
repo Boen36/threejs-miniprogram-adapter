@@ -2,7 +2,7 @@
 
 本路线图用于记录 `threejs-miniprogram-adapter` 从实验适配层走向可信开源项目的迭代顺序。日期和范围会随真实使用反馈调整，但不会以自动化测试代替微信开发者工具或真机证据。
 
-**最近更新：2026-08-13。** 第一阶段的自动化收敛已完成，第二阶段正在推进；平台信息、网络生命周期、多 Canvas Document 归属与 Loader 插件兼容面审计已完成。微信开发者工具与真机证据仍待补齐。
+**最近更新：2026-08-13。** 第一、第二阶段的自动化与兼容面收敛已完成，下一步进入微信宿主验收。微信开发者工具与真机证据仍待补齐。
 
 ## 维护原则
 
@@ -14,8 +14,9 @@
 
 ## 当前基线（2026-08）
 
-- `npm run check` 覆盖语法、144 个 Node 测试、TypeScript consumer、publint 和打包检查。
-- CI 覆盖 three.js r160、r174、r183、r185。
+- `npm run check` 覆盖语法、148 个 Node 测试、TypeScript consumer、publint 和打包检查。
+- CI 精确覆盖最低 Node 18.17.0，并覆盖 Node 20/22/24 与 three.js r160、r174、r183、r185。
+- Node 24 覆盖率任务统计全部 `src/**/*.js`；当前为行 79.44%、分支 76.59%、函数 58.84%，门槛分别为 78%、75%、57%。
 - WebGL2、普通 GLTF/GLB、OrbitControls 和主线程 DRACO 均处于实验支持阶段。
 - 尚未完成微信开发者工具、Android、iOS 的完整验收，也尚未发布到 npm registry。
 
@@ -38,8 +39,8 @@
 - [x] 审核 Fetch、XHR、Blob、URL、Image 的取消、错误和临时文件生命周期；异步回调隔离、终态事件和对象 URL 回收已有回归测试。
 - [x] 审核多页面、多 Canvas 下的 document 与图片工厂归属；每个 adapter 独立持有 Document/Canvas 图片工厂，共享全局按页面栈激活与恢复。
 - [x] 清理或弃用无实际行为的 `enhance*Loader()`；旧入口成为一次性告警、无原型副作用的迁移层，保留的显式纹理 helper 与 DRACO 均有示例和测试。
-- [ ] 为 Audio、Video 等占位实现确定保留、收缩或弃用策略。
-- [ ] 在 CI 中实际覆盖声明的最低 Node 版本，并持续记录核心模块覆盖率。
+- [x] 收敛 Audio、Video 占位实现：保留并补强 `InnerAudioContext` 基础播放与销毁，不再注入伪 Web Audio；video 不再伪造成功状态并明确标记 VideoTexture 不支持。
+- [x] 在 CI 中精确覆盖声明的最低 Node 18.17.0，并以独立 Node 24 job 持续记录和约束全部核心源码覆盖率。
 
 ## 第三阶段：微信宿主验收
 

@@ -16,7 +16,8 @@
 | 普通 glTF/GLB | 实验支持 | 远程、本地、内嵌纹理 GLB 的 GLTFLoader 集成测试；待真机验证 |
 | DRACO 压缩 glTF | 实验支持（主线程 WASM 解码） | 真实 Draco 位流单元测试 + GLTFLoader 集成测试；需自带 decoder 资源；待真机验证 |
 | KTX2、WebGPU、WebXR | 不支持 | — |
-| VideoTexture / Web Audio | 有限占位实现 | 不建议用于生产 |
+| Audio / HTMLAudioElement | 有限支持 | `wx.createInnerAudioContext` 桥接与生命周期 mock 测试；待真机验证 |
+| VideoTexture / Web Audio | 不支持 | 不注入伪 `AudioContext`，video 元素不伪造可播放状态 |
 
 包声明的 three.js 范围为 `>=0.160.0 <0.186.0`。范围表示自动化兼容目标，并不代表所有 addon 都已验证。
 
@@ -215,6 +216,23 @@ loader.load('https://example.com/model-draco.glb', gltf => scene.add(gltf.scene)
 - decoder 文件需随代码包分发；远程 URL 也可通过适配器 fetch 加载，但需配置合法域名。
 - 独立 `.drc` 文件可直接 `dracoLoader.load(url, onLoad)` 加载；也支持 `draco3d` 包导出的 `DracoDecoderModule` 作为工厂。
 
+## 媒体 API 边界
+
+适配器只保留微信确实提供底层能力的基础音频播放。`Audio` 与 `document.createElement('audio')` 会桥接到 `wx.createInnerAudioContext()`：
+
+```javascript
+const audio = new Audio('https://example.com/sound.mp3');
+audio.loop = true;
+await audio.play();
+
+// 页面退出时释放微信原生音频上下文
+audio.destroy();
+```
+
+该桥接只覆盖 `src`、播放/暂停、跳转、音量/静音、循环和基础事件，仍需在微信开发者工具、Android 与 iOS 验证格式和播放策略。适配器不会安装伪 `AudioContext`；`THREE.AudioLoader`、`THREE.Audio`、`PositionalAudio`、解码、分析器和 Web Audio 节点图均不支持。宿主若已经提供原生 `AudioContext`，适配器会原样保留。
+
+`document.createElement('video')` 只提供明确失败的形状兼容层，始终保持 `HAVE_NOTHING`，`play()` 会拒绝。微信 WXML `<video>` 可用于页面 UI 播放，但其 `VideoContext` 不能提供 WebGL 像素帧，因此不能用于 `THREE.VideoTexture`。
+
 ## API
 
 ### `adaptForMiniProgram(canvas, options?)`
@@ -272,6 +290,7 @@ npm install
 ```bash
 npm ci
 npm run check
+npm run test:coverage # 需要 Node >= 22.8；CI 固定使用 Node 24
 ```
 
 `npm run check` 会执行：
@@ -281,7 +300,7 @@ npm run check
 3. TypeScript 声明 consumer 编译；
 4. publint 与 npm tarball 检查。
 
-CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB 与销毁重进页面。
+项目最低 Node 版本为 `18.17.0`，CI 会精确运行该版本，并继续覆盖 Node 20/22/24 与 three.js r160、r174、r183、r185。独立覆盖率任务统计全部 `src/**/*.js`，当前门槛为行 78%、分支 75%、函数 57%，结果会写入 Actions job summary。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB 与销毁重进页面。
 
 ## 已知限制
 
@@ -292,7 +311,9 @@ CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工
 - DRACO 解码在主线程同步执行，解码期间 UI 会阻塞；decoder 资源（wrapper + WASM）需由业务方随代码包分发。
 - `fetch` 支持 `AbortSignal`；本地 FileSystemManager 读取无法从宿主层中止，但取消后会立即拒绝并忽略晚到回调。
 - `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。新创建的单个超大 Blob 不会在返回前自我淘汰，可能暂时超过容量阈值；使用完仍应调用 `URL.revokeObjectURL()`。
-- DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
+- `Audio`/`HTMLAudioElement` 只桥接 `wx.createInnerAudioContext` 的基础播放，使用后需调用 `destroy()`；Web Audio 与 three.js 音频类不支持。
+- `HTMLVideoElement` 是明确拒绝播放的兼容形状；WXML `<video>` 仅可用于 UI，不能作为 `VideoTexture` 像素源。
+- DOM、URL、Blob 等仍是最小兼容实现，不等价于浏览器标准实现。
 - `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
 - 平台信息优先读取 `getWindowInfo()`、`getDeviceInfo()`、`getAppBaseInfo()`；单次合并读取中，仅在现代 API 缺失、返回不完整或抛错时调用一次 `getSystemInfoSync()` 补缺。
 - 多页面页面栈和多 Canvas 均应每实例独立创建 adapter，并在 `onUnload` 调用 `dispose()`。共享 `globalThis` 时只有栈顶 adapter 的 Document/Image 是全局当前值；后台并发图片加载需隔离 `globalObject` 或显式传入 `adapter.document`。
