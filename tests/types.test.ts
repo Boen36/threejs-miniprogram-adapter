@@ -50,6 +50,19 @@ LoaderPlugins.createCachedLoader({}, class {});
 LoaderPlugins.loadTextureFromBase64({}, 'data:image/png;base64,AAA=');
 LoaderPlugins.loadTextureFromFile({}, 'wxfile://tmp/tex.png');
 
+const dracoLoader = new adapter.MiniProgramDRACOLoader();
+dracoLoader
+  .setDecoderModule((config: Record<string, unknown>) => Promise.resolve({ Decoder: class {} }))
+  .setDecoderBinary(new ArrayBuffer(8));
+dracoLoader.preload();
+dracoLoader.parse(new ArrayBuffer(8), (geometry: unknown) => void geometry);
+dracoLoader
+  .decodeDracoFile(new ArrayBuffer(8), (geometry: unknown) => void geometry, { position: 0 }, { position: 'Float32Array' }, 'srgb', (error: unknown) => void error)
+  .then((geometry: unknown) => void geometry);
+dracoLoader.dispose();
+const namespaceDracoLoader = new LoaderPlugins.MiniProgramDRACOLoader();
+void namespaceDracoLoader;
+
 // —— Controls 插件：adapt 系列与手势控制器 ——
 ControlPlugins.adaptAllControls({});
 ControlPlugins.adaptOrbitControls({});

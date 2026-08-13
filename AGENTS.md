@@ -23,9 +23,10 @@
   - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析；本地文件读取限沙箱（`file://`/`wxfile://`/`USER_DATA_PATH` 前缀，拒绝 `..`）。
   - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理，`constructor.name` 伪装为 WebGL2RenderingContext 供 three 判定，`_replaceContext` 支持热替换）、扩展与能力检测。
 - `src/plugins/loaders.js` — 绕过 three.js 图片路径、走 wx 图片层；`createFileLoader`/`resolvePath`/各 `enhance*Loader`。
+- `src/plugins/draco-loader.js` — `MiniProgramDRACOLoader`：主线程 WASM 解码（不走 Worker），实现 GLTFLoader `setDRACOLoader` 所需的 `preload`/`decodeDracoFile`/`dispose` 契约；decoder 工厂与 WASM 由业务方注入。解码逻辑移植自 three DRACOLoader 的 Worker 实现。
 - `src/plugins/controls.js` — 真正有用的是 `createTouchControls`/`createGestureControls`；`adaptOrbitControls` 等多数是空壳，OrbitControls 靠触摸→Pointer 桥工作。
 - `types/index.d.ts` — 公共类型。运行时导出与 .d.ts 必须同步（曾有漂移，已修复）。
-- `examples/` — 可导入微信开发者工具的示例工程（basic/controls/loaders 三个页面）。
+- `examples/` — 可导入微信开发者工具的示例工程（basic/controls/loaders/draco 四个页面；draco 页面自带 decoder 资源 `libs/draco/` 与压缩模型 `assets/cube-draco.glb`）。
 
 ## 维护约定
 
@@ -35,14 +36,13 @@
 4. **微信宿主行为**：涉及运行时改动的 PR 需要说明"自动化证明了什么 + 还需真机确认什么"。
 
 ## 已知限制与坑
-
-- DRACO 压缩 glTF 不支持（three 的 Worker 模型与微信 Worker 不兼容），见 Issue #1。KTX2/WebGPU/WebXR 不支持。
+- DRACO 压缩 glTF 经 `MiniProgramDRACOLoader` 实验支持（主线程 WASM 解码，decoder 资源随代码包分发，大模型会阻塞 UI；wx.createWorker 离线方案仍跟踪在 Issue #1）。KTX2/WebGPU/WebXR 不支持。
 - WebGL2 需要基础库 >= 2.24.0（`checkCompatibility`/`detectEnvironment` 阈值已按此设置）；`getContext('webgl')` 返回真实 WebGL1。
 - `bindTouchEvents` 只准备处理器表，触摸必须走 WXML `bindtouch*` → `touchEventHandlers` 转发。
-- iOS 切后台上下文可能被销毁：页面 `onShow` 调 `adapter.canvas.recoverContext()`（examples 三个页面已示范）。
+- iOS 切后台上下文可能被销毁：页面 `onShow` 调 `adapter.canvas.recoverContext()`（examples 四个页面已示范）。
 - `updateSize()` 只返回建议尺寸，不应用到 canvas/renderer（README 已声明）。
 - 尚未发布到 npm；README 安装说明目前用 GitHub 直装。
-- 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。
+- 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB、销毁重进页面。
 
 ## 发布流程（npm）
 
@@ -50,7 +50,7 @@
 
 尚未发布到 npm；README 安装说明目前用 GitHub 直装。发布前按此清单执行（README 说发布后会把安装说明切换为 registry 方式）：
 
-1. **真机验证**（不可跳过）：微信开发者工具导入 `examples/`，跑通三个页面（basic / controls / loaders），再覆盖 Android 与 iOS：基础渲染、OrbitControls、远程 GLB、本地 GLB、销毁重进页面。
+1. **真机验证**（不可跳过）：微信开发者工具导入 `examples/`，跑通四个页面（basic / controls / loaders / draco），再覆盖 Android 与 iOS：基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB、销毁重进页面。
 2. **版本号**：同步更新 `src/version.js` 与 `package.json` 的 `version`（tests 校验两者一致）。按 semver：破坏性 API 变更 → major；新能力 → minor；修复 → patch。
 3. **README**：把「安装」节切换为 `npm install threejs-miniprogram-adapter`；「项目状态」横幅若含未发布说明则更新；确认能力表与现状一致（不要扩大声明）。
 4. **检查**：`npm run check` 全绿；确认 `npm pack --dry-run` 的 tarball 只含 `src/`、`types/`、LICENSE、README、package.json（`files` 白名单已配好，AGENTS.md 不会进包）。

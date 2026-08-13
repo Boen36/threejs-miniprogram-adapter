@@ -12,7 +12,7 @@
 | three.js 基础 API | 实验支持 | r160、r183、r185 测试矩阵；r160~r162 建议升级（见下方说明） |
 | OrbitControls 触摸 | 支持手动转发 | PointerEvent 集成测试；需绑定 WXML 事件 |
 | 普通 glTF/GLB | 实验支持 | 网络与二进制读取单元测试；待真机验证 |
-| DRACO 压缩 glTF | **暂不支持** | 标准 DRACOLoader 的 Worker 模型与微信 Worker 不兼容 |
+| DRACO 压缩 glTF | 实验支持（主线程 WASM 解码） | 真实 Draco 位流单元测试 + GLTFLoader 集成测试；需自带 decoder 资源；待真机验证 |
 | KTX2、WebGPU、WebXR | 不支持 | — |
 | VideoTexture / Web Audio | 有限占位实现 | 不建议用于生产 |
 
@@ -160,13 +160,43 @@ loader.load(
 - 真机网络请求必须使用 HTTPS，并在小程序后台配置合法域名。
 - 本地临时文件和 data URL 由适配网络层处理。
 - `LoaderPlugins` 保留给兼容旧用法；普通 GLTFLoader 不需要调用 `enhanceAllLoaders()`。
-- 带 `KHR_draco_mesh_compression` 的模型当前不能使用。
+- 带 `KHR_draco_mesh_compression` 的模型使用 `MiniProgramDRACOLoader`，见下一节。
 
-## 为什么暂不支持 DRACO
+## 加载 DRACO 压缩 glTF
 
-three.js 标准 `DRACOLoader` 会动态生成 Blob URL，再调用浏览器形式的 `new Worker(blobURL)`，默认还可能创建多个 Worker。微信小程序要求 Worker 入口预先位于代码包的 workers 目录，并通过 `wx.createWorker()` 创建；消息 API、资源路径和 WASM 加载方式也不同。
+three.js 标准 `DRACOLoader` 动态生成 Blob URL 再调用浏览器形式的 `new Worker(blobURL)`，与微信小程序的 Worker 模型不兼容，无法直接使用。适配器提供 `MiniProgramDRACOLoader`：在主线程上用 WASM decoder 完成解码，接口兼容 `gltfLoader.setDRACOLoader()`。
 
-因此，仅补一个 `Worker` 全局或配置 decoder URL 不能可靠支持 DRACO。后续实现需要一套小程序专用 worker 入口、decoder 资源复制流程、单 Worker 调度，以及开发者工具与真机回归测试。相关进展见 [Issue #1](https://github.com/Boen36/threejs-miniprogram-adapter/issues/1)。
+先把 three 包里的两个 decoder 文件复制进小程序代码包（例如 `libs/draco/`）：
+
+- `three/examples/jsm/libs/draco/draco_wasm_wrapper.js`
+- `three/examples/jsm/libs/draco/gltf/draco_decoder.wasm`（推荐 glTF 专用构建，约 285KB；也可用 `libs/draco/draco_decoder.wasm`）
+
+```javascript
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { adaptForMiniProgram, MiniProgramDRACOLoader } from 'threejs-miniprogram-adapter';
+
+// 适配器会把微信的 WXWebAssembly 映射为全局 WebAssembly
+adaptForMiniProgram(canvas);
+
+// 代码包内文件：CommonJS require + FileSystemManager 读取
+const DracoDecoderModule = require('./libs/draco/draco_wasm_wrapper.js');
+const wasmBinary = wx.getFileSystemManager().readFileSync('./libs/draco/draco_decoder.wasm');
+
+const dracoLoader = new MiniProgramDRACOLoader()
+  .setDecoderModule(DracoDecoderModule)
+  .setDecoderBinary(wasmBinary);
+
+const loader = new GLTFLoader();
+loader.setDRACOLoader(dracoLoader);
+loader.load('https://example.com/model-draco.glb', gltf => scene.add(gltf.scene));
+```
+
+注意：
+
+- 解码在主线程同步执行，大模型会短暂阻塞 UI；建议在 loading 界面期间解码。基于 `wx.createWorker` 的离线方案仍跟踪在 [Issue #1](https://github.com/Boen36/threejs-miniprogram-adapter/issues/1)。
+- WASM 依赖基础库 `>= 2.13.0`（`WXWebAssembly`）；WebGL2 本身要求 `>= 2.24.0`，不构成额外限制。
+- decoder 文件需随代码包分发；远程 URL 也可通过适配器 fetch 加载，但需配置合法域名。
+- 独立 `.drc` 文件可直接 `dracoLoader.load(url, onLoad)` 加载；也支持 `draco3d` 包导出的 `DracoDecoderModule` 作为工厂。
 
 ## API
 
@@ -200,8 +230,8 @@ three.js 标准 `DRACOLoader` 会动态生成 Blob URL，再调用浏览器形�
 - `checkCompatibility()`
 - `quickAdapt(canvas, options?)`
 - `installPolyfills(globalObject?, config?)`
+- `MiniProgramDRACOLoader`：主线程 WASM 解码的 DRACO 加载器，见「加载 DRACO 压缩 glTF」
 - `LoaderPlugins`
-- `ControlPlugins`
 
 TypeScript 声明位于 `types/index.d.ts`，并由 CI 编译 consumer fixture。
 
@@ -231,7 +261,7 @@ npm run check
 3. TypeScript 声明 consumer 编译；
 4. publint 与 npm tarball 检查。
 
-CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB 与销毁重进页面。
+CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB 与销毁重进页面。
 
 ## 已知限制
 
@@ -239,6 +269,7 @@ CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单�
 - WebGL2 需要基础库 `>= 2.24.0`；更低基础库上 `getContext('webgl')` 返回 WebGL1 上下文，`inspectWebGL()` 会如实报告。
 - iOS 切后台/锁屏后 WebGL 上下文可能被系统销毁。页面 `onShow` 时调用 `adapter.canvas.recoverContext()` 可尝试恢复（重新获取上下文并分发 `webglcontextrestored` 让 three.js 重建状态）。
 - 本地文件读取（`file://`、`wxfile://`、`wx.env.USER_DATA_PATH` 前缀）仅限小程序沙箱（`usr`/`store` 目录），拒绝路径遍历。开发者工具中本地路径前缀为 `http://usr`，已自动兼容。
+- DRACO 解码在主线程同步执行，解码期间 UI 会阻塞；decoder 资源（wrapper + WASM）需由业务方随代码包分发。
 - `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。
 - DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
 - `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。

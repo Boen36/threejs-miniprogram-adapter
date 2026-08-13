@@ -17,6 +17,7 @@ import {
 } from './adaptor/index.js';
 import * as LoaderPlugins from './plugins/loaders.js';
 import * as ControlPlugins from './plugins/controls.js';
+import { MiniProgramDRACOLoader } from './plugins/draco-loader.js';
 import { VERSION } from './version.js';
 
 function getGlobalObject() {
@@ -314,7 +315,8 @@ export {
   WebGLExtensions,
   checkMiniProgramLimitations,
   LoaderPlugins,
-  ControlPlugins
+  ControlPlugins,
+  MiniProgramDRACOLoader
 };
 
 // 默认导出
@@ -325,5 +327,6 @@ export default {
   waitForCanvas,
   VERSION,
   LoaderPlugins,
+  MiniProgramDRACOLoader,
   ControlPlugins
 };

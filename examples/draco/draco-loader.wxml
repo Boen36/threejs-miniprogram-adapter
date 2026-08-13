@@ -1,0 +1,4 @@
+<view class="container">
+  <canvas type="webgl" id="webgl" class="webgl-canvas"></canvas>
+  <view class="hud" wx:if="{{!isReady}}">{{status}}</view>
+</view>

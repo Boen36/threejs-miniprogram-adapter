@@ -2,7 +2,8 @@
   "pages": [
     "basic/render",
     "controls/orbit-controls",
-    "loaders/gltf-loader"
+    "loaders/gltf-loader",
+    "draco/draco-loader"
   ],
   "window": {
     "navigationBarTitleText": "Three.js Mini Program Adapter",

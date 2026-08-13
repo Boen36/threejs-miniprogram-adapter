@@ -102,6 +102,16 @@ function installPolyfills(globalObject = globalThis, config = {}) {
   // WebGL
   setDefault(globalObject, 'WebGL2RenderingContext', WebGL2RenderingContextWrapper);
 
+  // WebAssembly：微信在逻辑层以 WXWebAssembly 暴露（基础库 >= 2.13.0），
+  // 原版 WebAssembly 全局不一定存在；three 的 DRACOLoader 与 emscripten 胶水按 WebAssembly 探测。
+  if (typeof globalObject.WebAssembly === 'undefined' && typeof globalObject.WXWebAssembly === 'object') {
+    try {
+      globalObject.WebAssembly = globalObject.WXWebAssembly;
+    } catch (error) {
+      // 宿主全局不可写时保持原状
+    }
+  }
+
   setDefault(windowObject, 'document', documentObject);
   setDefault(windowObject, 'window', windowObject);
   setDefault(windowObject, 'self', windowObject);

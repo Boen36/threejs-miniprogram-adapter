@@ -3,6 +3,8 @@
  * 为 three.js 的各种 Loader 提供小程序环境适配
  */
 
+import { MiniProgramDRACOLoader } from './draco-loader.js';
+
 import { document } from '../adaptor/dom/document.js';
 
 function createImageElement() {
@@ -325,6 +327,7 @@ function loadTextureFromFile(THREE, filePath, onLoad, onError) {
 
 export {
   createFileLoader,
+  MiniProgramDRACOLoader,
   resolvePath,
   enhanceTextureLoader,
   enhanceGLTFLoader,
@@ -339,6 +342,7 @@ export {
 
 export default {
   enhanceAllLoaders,
+  MiniProgramDRACOLoader,
   createCachedLoader,
   loadTextureFromBase64,
   loadTextureFromFile

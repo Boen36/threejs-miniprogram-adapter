@@ -298,6 +298,49 @@ export class WebGLExtensions {
  */
 export function checkMiniProgramLimitations(gl: WebGLRenderingContext): string[];
 
+/**
+ * 小程序 DRACO 加载器：在主线程用注入的 WASM decoder 解码 Draco 几何，
+ * 实现 GLTFLoader 所需的 DRACOLoader 兼容接口（gltfLoader.setDRACOLoader）。
+ */
+export class MiniProgramDRACOLoader {
+  constructor(manager?: any);
+
+  /** 注入 decoder 模块工厂（three 的 draco_wasm_wrapper.js 或 draco3d 的 DracoDecoderModule）。 */
+  setDecoderModule(moduleFactory: (config: Record<string, unknown>) => any): this;
+
+  /** 注入 WASM 二进制（如 wx.getFileSystemManager().readFileSync 的结果）。 */
+  setDecoderBinary(binary: ArrayBuffer): this;
+
+  /** 预加载 decoder；GLTFLoader 在扩展构造时同步调用。 */
+  preload(): this;
+
+  /** 加载独立的 .drc 文件。 */
+  load(
+    url: string,
+    onLoad?: (geometry: any) => void,
+    onProgress?: (event: any) => void,
+    onError?: (error: any) => void
+  ): void;
+
+  /** 解析 .drc 数据，顶点颜色按 sRGB 处理。 */
+  parse(buffer: ArrayBuffer, onLoad?: (geometry: any) => void, onError?: (error: any) => void): void;
+
+  /** GLTFLoader 内部调用入口（KHR_draco_mesh_compression）。 */
+  decodeDracoFile(
+    buffer: ArrayBuffer,
+    callback: (geometry: any) => void,
+    attributeIDs?: Record<string, number>,
+    attributeTypes?: Record<string, string>,
+    vertexColorSpace?: string,
+    onError?: (error: any) => void
+  ): Promise<any>;
+
+  /** 释放 decoder 状态，之后再使用会重新初始化。 */
+  dispose(): this;
+}
+
+type MiniProgramDRACOLoaderClass = typeof MiniProgramDRACOLoader;
+
 // Loader 插件
 export namespace LoaderPlugins {
   function enhanceAllLoaders(THREE: any): void;
@@ -317,6 +360,7 @@ export namespace LoaderPlugins {
   };
   /** 解析路径，处理小程序特有的路径格式。 */
   function resolvePath(url: string): string;
+  const MiniProgramDRACOLoader: MiniProgramDRACOLoaderClass;
   function createCachedLoader(THREE: any, LoaderClass: any): any;
   function loadTextureFromBase64(
     THREE: any,
@@ -386,6 +430,7 @@ declare const adapter: {
   VERSION: typeof VERSION;
   LoaderPlugins: typeof LoaderPlugins;
   ControlPlugins: typeof ControlPlugins;
+  MiniProgramDRACOLoader: MiniProgramDRACOLoaderClass;
 };
 
 export default adapter;
