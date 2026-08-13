@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import * as THREE from 'three';
 
 import { HTMLCanvasElement } from '../src/adaptor/dom/canvas.js';
-
+import { installPolyfills } from '../src/index.js';
 /**
  * 构建可渲染的 mock WebGL2 上下文：关键方法显式实现，
  * 其余方法 no-op。返回的对象用于驱动真实 three.js WebGLRenderer。
@@ -129,6 +129,9 @@ describe('WebGLRenderer smoke test', () => {
     const native = { width: 300, height: 150, getContext: () => gl };
     const canvas = new HTMLCanvasElement(native);
 
+    // 注入适配器 polyfills：three 的动画循环经全局 self 取 rAF/cancelAF
+    installPolyfills(globalThis);
+
     const renderer = new THREE.WebGLRenderer({ canvas });
     renderer.setPixelRatio(1);
     renderer.setSize(300, 150, false);
@@ -138,10 +141,12 @@ describe('WebGLRenderer smoke test', () => {
     camera.position.set(0, 0, 4);
     scene.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial()));
 
+    renderer.setAnimationLoop(() => {});
     renderer.render(scene, camera);
+    renderer.setAnimationLoop(null);
     renderer.dispose();
 
-    // 构造 + 渲染一帧 + 销毁全程未抛错
+    // 构造 + 启动/停止动画循环 + 渲染一帧 + 销毁全程未抛错
     assert.ok(true);
   });
 });
