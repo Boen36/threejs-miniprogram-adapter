@@ -7,6 +7,7 @@ import { Element, HTMLElement } from './element.js';
 import { HTMLCanvasElement } from './canvas.js';
 import { HTMLImageElement } from './image.js';
 import { HTMLVideoElement } from './video.js';
+import { HTMLAudioElement } from '../media/audio.js';
 
 class Document extends HTMLElement {
   constructor() {
@@ -174,6 +175,9 @@ class Document extends HTMLElement {
         break;
       case 'video':
         element = new HTMLVideoElement();
+        break;
+      case 'audio':
+        element = new HTMLAudioElement();
         break;
       case 'div':
       case 'span':
