@@ -19,11 +19,13 @@ class Blob {
         this._parts.push(part);
         this._size += part.size;
       } else if (part instanceof ArrayBuffer) {
-        this._parts.push(new Uint8Array(part));
+        // Blob 创建时必须快照输入，不能继续引用业务方可变缓冲区。
+        this._parts.push(new Uint8Array(part).slice());
         this._size += part.byteLength;
-      } else if (part instanceof Uint8Array || part instanceof Int8Array) {
-        this._parts.push(part);
-        this._size += part.length;
+      } else if (ArrayBuffer.isView(part)) {
+        const bytes = new Uint8Array(part.buffer, part.byteOffset, part.byteLength).slice();
+        this._parts.push(bytes);
+        this._size += bytes.byteLength;
       } else if (Array.isArray(part)) {
         this._parts.push(new Uint8Array(part));
         this._size += part.length;
@@ -44,8 +46,15 @@ class Blob {
   // 切片
   slice(start = 0, end = this._size, contentType = '') {
     const size = this._size;
-    start = Math.max(0, Math.min(start, size));
-    end = Math.max(start, Math.min(end, size));
+    const relativeStart = Number(start);
+    const relativeEnd = end === undefined ? size : Number(end);
+    start = Number.isNaN(relativeStart)
+      ? 0
+      : relativeStart < 0 ? Math.max(size + relativeStart, 0) : Math.min(relativeStart, size);
+    end = Number.isNaN(relativeEnd)
+      ? 0
+      : relativeEnd < 0 ? Math.max(size + relativeEnd, 0) : Math.min(relativeEnd, size);
+    end = Math.max(start, end);
 
     const slicedParts = [];
     let currentOffset = 0;
@@ -136,104 +145,58 @@ class FileReader extends EventTarget {
     this.readyState = FileReader.EMPTY;
     this.result = null;
     this.error = null;
-    this._aborted = false;
+    this._readId = 0;
   }
 
   // 读取为 ArrayBuffer
   readAsArrayBuffer(blob) {
-    this._startRead(blob);
-    blob.arrayBuffer().then(
-      buffer => {
-        if (this._aborted) return;
-        this.result = buffer;
-        this.readyState = FileReader.DONE;
-        this._callOnLoad();
-      },
-      error => {
-        if (this._aborted) return;
-        this.error = error;
-        this.readyState = FileReader.DONE;
-        this._callOnError();
-      }
-    );
+    this._read(blob, buffer => buffer);
   }
 
   // 读取为文本
   readAsText(blob, encoding = 'UTF-8') {
     // 规范：非法编码标签在调用时同步抛 RangeError，而不是让读取挂起/静默失败
     const decoder = new TextDecoder(encoding);
-    this._startRead(blob);
-    blob.arrayBuffer().then(
-      buffer => {
-        if (this._aborted) return;
-        this.result = decoder.decode(buffer);
-        this.readyState = FileReader.DONE;
-        this._callOnLoad();
-      },
-      error => {
-        if (this._aborted) return;
-        this.error = error;
-        this.readyState = FileReader.DONE;
-        this._callOnError();
-      }
-    );
+    this._read(blob, buffer => decoder.decode(buffer));
   }
 
   // 读取为 Data URL
   readAsDataURL(blob) {
-    this._startRead(blob);
-    blob.arrayBuffer().then(
-      buffer => {
-        if (this._aborted) return;
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-        const type = blob.type || 'application/octet-stream';
-        this.result = `data:${type};base64,${base64}`;
-        this.readyState = FileReader.DONE;
-        this._callOnLoad();
-      },
-      error => {
-        if (this._aborted) return;
-        this.error = error;
-        this.readyState = FileReader.DONE;
-        this._callOnError();
+    this._read(blob, buffer => {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
-    );
+      const base64 = btoa(binary);
+      const type = blob.type || 'application/octet-stream';
+      return `data:${type};base64,${base64}`;
+    });
   }
 
   // 读取为二进制字符串（已废弃，但为兼容性保留）
   readAsBinaryString(blob) {
-    this._startRead(blob);
-    blob.arrayBuffer().then(
-      buffer => {
-        if (this._aborted) return;
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        this.result = binary;
-        this.readyState = FileReader.DONE;
-        this._callOnLoad();
-      },
-      error => {
-        if (this._aborted) return;
-        this.error = error;
-        this.readyState = FileReader.DONE;
-        this._callOnError();
+    this._read(blob, buffer => {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
-    );
+      return binary;
+    });
   }
 
   // 中止读取
   abort() {
-    this._aborted = true;
+    if (this.readyState !== FileReader.LOADING) {
+      this.result = null;
+      return;
+    }
+
+    this._readId++;
     this.readyState = FileReader.DONE;
     this.result = null;
+    this.error = null;
     if (this.onabort) {
       this.onabort();
     }
@@ -246,10 +209,55 @@ class FileReader extends EventTarget {
     if (this.readyState === FileReader.LOADING) {
       throw new Error('Already reading');
     }
+    if (!blob || typeof blob.arrayBuffer !== 'function') {
+      throw new TypeError('Argument 1 is not a Blob');
+    }
     this.readyState = FileReader.LOADING;
     this.result = null;
     this.error = null;
-    this._aborted = false;
+    const readId = ++this._readId;
+    if (this.onloadstart) {
+      this.onloadstart();
+    }
+    this.dispatchEvent({ type: 'loadstart' });
+    return readId;
+  }
+
+  _read(blob, transform) {
+    const readId = this._startRead(blob);
+    let readPromise;
+    try {
+      readPromise = blob.arrayBuffer();
+    } catch (error) {
+      this._finishReadError(readId, error);
+      return;
+    }
+
+    Promise.resolve(readPromise).then(
+      buffer => {
+        if (!this._isActiveRead(readId)) return;
+        try {
+          this.result = transform(buffer);
+        } catch (error) {
+          this._finishReadError(readId, error);
+          return;
+        }
+        this.readyState = FileReader.DONE;
+        this._callOnLoad();
+      },
+      error => this._finishReadError(readId, error)
+    );
+  }
+
+  _isActiveRead(readId) {
+    return readId === this._readId && this.readyState === FileReader.LOADING;
+  }
+
+  _finishReadError(readId, error) {
+    if (!this._isActiveRead(readId)) return;
+    this.error = error;
+    this.readyState = FileReader.DONE;
+    this._callOnError();
   }
 
   _callOnLoad() {

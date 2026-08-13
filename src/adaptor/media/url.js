@@ -13,8 +13,10 @@ const MAX_OBJECT_URL_BYTES = 50 * 1024 * 1024; // 50MB
 
 /**
  * 淘汰最旧的对象 URL（LRU），数量或估算字节超过上限时自动 revoke。
+ * 新创建的 URL 在本轮淘汰中受保护，避免单个超大 Blob 刚写入就被删除，
+ * 却仍向调用方返回一个已失效的临时文件路径。
  */
-function evictOldestIfNeeded() {
+function evictOldestIfNeeded(protectedKey = null) {
   let totalBytes = 0;
   objectURLs.forEach(stored => {
     totalBytes += stored.size || 0;
@@ -25,6 +27,7 @@ function evictOldestIfNeeded() {
     let oldestCreated = Infinity;
     let oldestSize = 0;
     objectURLs.forEach((stored, key) => {
+      if (key === protectedKey) return;
       if (stored.created < oldestCreated) {
         oldestCreated = stored.created;
         oldestKey = key;
@@ -60,23 +63,24 @@ function createObjectURL(blob) {
     created: Date.now()
   });
 
-  // 数量/容量超限时淘汰最旧项（含其临时文件）
-  evictOldestIfNeeded();
-
   // 如果是小程序环境，尝试写入临时文件
+  let resultURL = id;
   if (typeof wx !== 'undefined' && wx.getFileSystemManager) {
     try {
       const tempPath = saveBlobToTempFile(blob, id);
       if (tempPath) {
-        return tempPath;
+        resultURL = tempPath;
       }
     } catch (e) {
       console.warn('Failed to save blob to temp file:', e);
     }
   }
 
-  // 回退到返回 ID，后续使用时再处理
-  return id;
+  // 写入后再淘汰，确保被回收项的临时路径已登记，可同步 unlink。
+  // 单个超限 Blob 会保留到显式 revoke 或后续 URL 创建，不返回悬空路径。
+  evictOldestIfNeeded(resultURL);
+
+  return resultURL;
 }
 
 /**

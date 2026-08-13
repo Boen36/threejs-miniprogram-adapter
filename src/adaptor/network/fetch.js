@@ -243,6 +243,52 @@ async function fetch(input, init = {}) {
   }
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let requestTask = null;
+    let abortRequested = false;
+    let abortListener = null;
+
+    const cleanup = () => {
+      if (abortListener && typeof request.signal?.removeEventListener === 'function') {
+        request.signal.removeEventListener('abort', abortListener);
+      }
+      abortListener = null;
+    };
+    const settleResolve = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const settleReject = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    if (request.signal && typeof request.signal.addEventListener === 'function') {
+      abortListener = () => {
+        if (settled) return;
+        abortRequested = true;
+        if (requestTask && typeof requestTask.abort === 'function') {
+          try {
+            requestTask.abort();
+          } catch {
+            // 取消结果仍以 AbortError 为准，忽略宿主 abort() 自身的异常。
+          }
+        }
+        settleReject(new DOMException('The operation was aborted', 'AbortError'));
+      };
+      request.signal.addEventListener('abort', abortListener, { once: true });
+
+      // 防止初次检查与监听器注册之间发生取消。
+      if (request.signal.aborted) {
+        abortListener();
+        return;
+      }
+    }
+
     // 构建请求参数
     const requestOptions = {
       url: request.url,
@@ -253,35 +299,40 @@ async function fetch(input, init = {}) {
       // enableHttp2/enableQuic 交由宿主默认（强制开启在部分企业网络/代理下会失败）
       enableCache: request.cache !== 'no-store',
       success: (res) => {
-        const headers = new Headers();
-        if (res.header) {
-          Object.keys(res.header).forEach(key => {
-            headers.set(key, res.header[key]);
+        if (settled) return;
+        try {
+          const headers = new Headers();
+          if (res.header) {
+            Object.keys(res.header).forEach(key => {
+              headers.set(key, res.header[key]);
+            });
+          }
+
+          // 处理响应数据
+          let body = res.data;
+          if (body instanceof ArrayBuffer) {
+            // 已经是 ArrayBuffer
+          } else if (typeof body === 'string') {
+            const encoder = new TextEncoder();
+            body = encoder.encode(body).buffer;
+          } else {
+            body = new ArrayBuffer(0);
+          }
+
+          const response = new Response(body, {
+            url: request.url,
+            status: res.statusCode,
+            statusText: getStatusText(res.statusCode),
+            headers
           });
+
+          settleResolve(response);
+        } catch (error) {
+          settleReject(error);
         }
-
-        // 处理响应数据
-        let body = res.data;
-        if (body instanceof ArrayBuffer) {
-          // 已经是 ArrayBuffer
-        } else if (typeof body === 'string') {
-          const encoder = new TextEncoder();
-          body = encoder.encode(body).buffer;
-        } else {
-          body = new ArrayBuffer(0);
-        }
-
-        const response = new Response(body, {
-          url: request.url,
-          status: res.statusCode,
-          statusText: getStatusText(res.statusCode),
-          headers
-        });
-
-        resolve(response);
       },
       fail: (err) => {
-        reject(new Error(`Request failed: ${err.errMsg || err.message || 'Unknown error'}`));
+        settleReject(new Error(`Request failed: ${err?.errMsg || err?.message || 'Unknown error'}`));
       }
     };
 
@@ -292,32 +343,34 @@ async function fetch(input, init = {}) {
 
     // 处理本地文件（file://、wxfile://、或 wx.env.USER_DATA_PATH 前缀；
     // 后者兼容开发者工具的 http://usr 形态）
-    if (isLocalFilePath(request.url)) {
-      readLocalFile(request.url, resolve, reject);
-      return;
-    }
-
-    // 处理 data URL
-    if (request.url.startsWith('data:')) {
-      resolve(handleDataUrl(request.url));
-      return;
-    }
-
-    // 执行请求
-    if (typeof wx !== 'undefined' && wx.request) {
-      const task = wx.request(requestOptions);
-
-      // 处理 abort
-      if (request.signal) {
-        request.signal.addEventListener('abort', () => {
-          if (task && task.abort) {
-            task.abort();
-          }
-          reject(new DOMException('The operation was aborted', 'AbortError'));
-        });
+    try {
+      if (isLocalFilePath(request.url)) {
+        readLocalFile(request.url, settleResolve, settleReject);
+        return;
       }
-    } else {
-      reject(new Error('wx.request is not available'));
+
+      // 处理 data URL
+      if (request.url.startsWith('data:')) {
+        settleResolve(handleDataUrl(request.url));
+        return;
+      }
+
+      // 执行请求
+      if (typeof wx !== 'undefined' && wx.request) {
+        requestTask = wx.request(requestOptions);
+        // wx.request 理论上同步返回任务；若宿主实现期间触发取消，补做底层 abort。
+        if (abortRequested && requestTask && typeof requestTask.abort === 'function') {
+          try {
+            requestTask.abort();
+          } catch {
+            // Promise 已按 AbortError 结束。
+          }
+        }
+      } else {
+        settleReject(new Error('wx.request is not available'));
+      }
+    } catch (error) {
+      settleReject(error);
     }
   });
 }
