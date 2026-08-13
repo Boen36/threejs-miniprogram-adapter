@@ -3,6 +3,8 @@ import { afterEach, describe, test } from 'node:test';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 import { adaptForMiniProgram } from '../src/index.js';
+import { createGlb } from './helpers/glb.js';
+import { exposeInstalledGlobals } from './helpers/installed-globals.js';
 
 const originalWx = globalThis.wx;
 
@@ -45,7 +47,7 @@ function createImageCanvas() {
   return { canvas, images };
 }
 
-function createEmbeddedTextureGltf() {
+function createEmbeddedTextureGlb() {
   const positions = new Uint8Array(new Float32Array([
     0, 0, 0,
     1, 0, 0,
@@ -59,7 +61,7 @@ function createEmbeddedTextureGltf() {
   bytes.set(positions, 0);
   bytes.set(png, positions.byteLength);
 
-  return {
+  const gltf = {
     asset: { version: '2.0' },
     scene: 0,
     scenes: [{ nodes: [0] }],
@@ -90,44 +92,13 @@ function createEmbeddedTextureGltf() {
       { buffer: 0, byteOffset: positions.byteLength, byteLength: png.byteLength }
     ],
     buffers: [{
-      byteLength: bytes.byteLength,
-      uri: `data:application/octet-stream;base64,${Buffer.from(bytes).toString('base64')}`
+      byteLength: bytes.byteLength
     }]
   };
+  return createGlb(gltf, bytes);
 }
 
-function exposeInstalledGlobals(host) {
-  const keys = [
-    'window', 'self', 'document', 'fetch', 'Request', 'Response', 'Headers',
-    'Blob', 'File', 'FileReader', 'DOMException', 'URL', 'URLSearchParams',
-    'Image', 'HTMLImageElement', 'Event', 'EventTarget', 'PointerEvent'
-  ];
-  const descriptors = new Map(keys.map(key => [
-    key,
-    Object.getOwnPropertyDescriptor(globalThis, key)
-  ]));
-
-  keys.forEach(key => {
-    Object.defineProperty(globalThis, key, {
-      configurable: true,
-      writable: true,
-      value: host[key]
-    });
-  });
-
-  return () => {
-    keys.forEach(key => {
-      const descriptor = descriptors.get(key);
-      if (descriptor) {
-        Object.defineProperty(globalThis, key, descriptor);
-      } else {
-        delete globalThis[key];
-      }
-    });
-  };
-}
-
-describe('GLTFLoader embedded images', () => {
+describe('GLTFLoader embedded image GLB', () => {
   test('loads a bufferView image through the installed self.URL', async () => {
     const { canvas, images } = createImageCanvas();
     const host = {};
@@ -138,7 +109,7 @@ describe('GLTFLoader embedded images', () => {
       assert.equal(globalThis.self.URL, host.URL);
 
       const gltf = await new GLTFLoader().parseAsync(
-        JSON.stringify(createEmbeddedTextureGltf()),
+        createEmbeddedTextureGlb(),
         ''
       );
       const mesh = gltf.scene.children[0];
