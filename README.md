@@ -11,7 +11,7 @@
 | 能力 | 状态 | 验证范围 |
 | --- | --- | --- |
 | WebGL2 Canvas 适配 | 实验支持 | 原生上下文代理自动化测试 |
-| three.js 基础 API | 实验支持 | r160、r183、r185 测试矩阵；r160~r162 建议升级（见下方说明） |
+| three.js 基础 API | 实验支持 | r160、r174、r183、r185 测试矩阵；r160~r162 建议升级（见下方说明） |
 | OrbitControls 触摸 | 支持手动转发 | PointerEvent 集成测试；需绑定 WXML 事件 |
 | 普通 glTF/GLB | 实验支持 | 网络与二进制读取单元测试；待真机验证 |
 | DRACO 压缩 glTF | 实验支持（主线程 WASM 解码） | 真实 Draco 位流单元测试 + GLTFLoader 集成测试；需自带 decoder 资源；待真机验证 |

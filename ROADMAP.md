@@ -2,6 +2,8 @@
 
 本路线图用于记录 `threejs-miniprogram-adapter` 从实验适配层走向可信开源项目的迭代顺序。日期和范围会随真实使用反馈调整，但不会以自动化测试代替微信开发者工具或真机证据。
 
+**最近更新：2026-08-13。** 当前正在推进第一阶段；核心全局对象、WebGL 上下文生命周期、触摸手势与四个示例生命周期已经完成自动化收敛，远程/本地 GLB 和真机证据仍待补齐。
+
 ## 维护原则
 
 - 正确性、安全性和资源生命周期优先于新增 addon 数量。
@@ -12,7 +14,7 @@
 
 ## 当前基线（2026-08）
 
-- `npm run check` 覆盖语法、109 个 Node 测试、TypeScript consumer、publint 和打包检查。
+- `npm run check` 覆盖语法、116 个 Node 测试、TypeScript consumer、publint 和打包检查。
 - CI 覆盖 three.js r160、r174、r183、r185。
 - WebGL2、普通 GLTF/GLB、OrbitControls 和主线程 DRACO 均处于实验支持阶段。
 - 尚未完成微信开发者工具、Android、iOS 的完整验收，也尚未发布到 npm registry。
@@ -24,8 +26,8 @@
 - [x] 补齐 `globalThis`、`window`、`self` 的 polyfill 一致性，覆盖内嵌纹理 GLB。
 - [x] 让 `inspectWebGL()` 正确报告 renderer 已创建的 WebGL1 或 WebGL2 上下文。
 - [x] 恢复 WebGL 上下文时保留初次创建使用的 context attributes。
-- [ ] 修复触摸手势的双击、多指移动和平移能力；未实现的选项不得继续宣称支持。
-- [ ] 统一四个示例的尺寸、像素比、暂停/恢复和销毁行为。
+- [x] 修复触摸手势的双击、多指移动和平移能力；`zoomSpeed`、`panSpeed` 等公开选项均有实际行为。
+- [x] 统一四个示例的尺寸、像素比、暂停/恢复和销毁行为。
 - [ ] 为远程 GLB、本地 GLB、内嵌纹理 GLB 和上下文恢复增加集成测试。
 
 ## 第二阶段：平台 API 与兼容面收敛

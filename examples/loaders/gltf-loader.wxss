@@ -16,3 +16,9 @@
   left: 24rpx;
   color: #fff;
 }
+
+.local-button {
+  position: absolute;
+  left: 24rpx;
+  bottom: 40rpx;
+}

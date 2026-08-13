@@ -6,6 +6,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
+import {
+  configureRendererSize,
+  disposeRenderingPage,
+  pauseRendering,
+  resumeRendering
+} from '../shared/runtime.js';
 
 Page({
   data: {
@@ -14,6 +20,7 @@ Page({
   },
 
   async onReady() {
+    this._disposed = false;
     try {
       // 获取 canvas
       const canvas = await waitForCanvas('#webgl', this);
@@ -46,11 +53,15 @@ Page({
         canvas: adaptedCanvas,
         antialias: true
       });
-      renderer.setSize(canvas.width, canvas.height);
+      this._renderer = renderer;
+      this._scene = scene;
+      this._camera = camera;
+      configureRendererSize(adapter, renderer, camera, canvas);
       renderer.shadowMap.enabled = true;
 
       // 控制器 - 自动支持触摸事件
       const controls = new OrbitControls(camera, adaptedCanvas);
+      this._controls = controls;
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
       controls.minDistance = 2;
@@ -110,6 +121,7 @@ Page({
 
       // 动画循环
       const animate = () => {
+        if (this._disposed) return;
         this._animationFrame = canvas.requestAnimationFrame(animate);
 
         // 更新 FPS
@@ -132,13 +144,9 @@ Page({
 
       this.setData({ isReady: true });
 
-      // 保存引用
-      this._renderer = renderer;
-      this._scene = scene;
-      this._camera = camera;
-      this._controls = controls;
-
     } catch (error) {
+      this._controls?.dispose();
+      disposeRenderingPage(this);
       console.error('初始化失败:', error);
       wx.showModal({
         title: '错误',
@@ -172,28 +180,16 @@ Page({
   },
 
   onUnload() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-    }
     this._controls?.dispose();
-    if (this._renderer) {
-      this._renderer.dispose();
-    }
-    this._adapter?.dispose();
+    this._controls = null;
+    disposeRenderingPage(this);
   },
 
   onHide() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-      this._animationFrame = null;
-    }
+    pauseRendering(this);
   },
 
   onShow() {
-    if (!this._adapter) return;
-    this._adapter.canvas.recoverContext();
-    if (!this._animationFrame && this._animate) {
-      this._animate();
-    }
+    resumeRendering(this);
   }
 });

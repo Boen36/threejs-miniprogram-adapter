@@ -47,7 +47,9 @@ function createTouchHandlers(canvas, options = {}) {
 
   // 触摸移动
   const onTouchMove = (e) => {
-    const pointers = convertTouchesToPointers(e.touches, 'pointermove', canvas);
+    // touches 包含当前全部触点；只派发 changedTouches，避免静止触点收到重复 move。
+    const changedTouches = e.changedTouches || e.touches || [];
+    const pointers = convertTouchesToPointers(changedTouches, 'pointermove', canvas);
 
     pointers.forEach(pointer => {
       dispatchPointerEvent(canvas, pointer);

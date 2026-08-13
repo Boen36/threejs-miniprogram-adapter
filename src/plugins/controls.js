@@ -36,6 +36,7 @@ function createTouchControls(camera, domElement, options = {}) {
     pointers: new Map(),
     lastPoint: null,
     lastDistance: 0,
+    lastCenter: null,
     theta: Math.atan2(offsetX, offsetZ),
     phi: Math.acos(Math.max(-1, Math.min(1, offsetY / initialRadius))),
     radius: initialRadius
@@ -56,12 +57,62 @@ function createTouchControls(camera, domElement, options = {}) {
     return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
   }
 
+  function centerBetweenPointers() {
+    const points = Array.from(state.pointers.values());
+    if (points.length < 2) return null;
+    return {
+      x: (points[0].x + points[1].x) / 2,
+      y: (points[0].y + points[1].y) / 2
+    };
+  }
+
+  function panTarget(deltaX, deltaY) {
+    const forwardX = target.x - camera.position.x;
+    const forwardY = target.y - camera.position.y;
+    const forwardZ = target.z - camera.position.z;
+    const forwardLength = Math.hypot(forwardX, forwardY, forwardZ);
+    if (!forwardLength) return false;
+
+    const fx = forwardX / forwardLength;
+    const fy = forwardY / forwardLength;
+    const fz = forwardZ / forwardLength;
+    const cameraUp = camera.up || { x: 0, y: 1, z: 0 };
+    let rightX = fy * cameraUp.z - fz * cameraUp.y;
+    let rightY = fz * cameraUp.x - fx * cameraUp.z;
+    let rightZ = fx * cameraUp.y - fy * cameraUp.x;
+    let rightLength = Math.hypot(rightX, rightY, rightZ);
+
+    // 视线与 up 平行时使用球坐标的水平切线作为退化回退。
+    if (!rightLength) {
+      rightX = Math.cos(state.theta);
+      rightY = 0;
+      rightZ = -Math.sin(state.theta);
+      rightLength = 1;
+    }
+    rightX /= rightLength;
+    rightY /= rightLength;
+    rightZ /= rightLength;
+
+    const upX = rightY * fz - rightZ * fy;
+    const upY = rightZ * fx - rightX * fz;
+    const upZ = rightX * fy - rightY * fx;
+    const scale = state.radius * 0.002 * config.panSpeed;
+    const horizontal = -deltaX * scale;
+    const vertical = deltaY * scale;
+
+    target.x += rightX * horizontal + upX * vertical;
+    target.y += rightY * horizontal + upY * vertical;
+    target.z += rightZ * horizontal + upZ * vertical;
+    return true;
+  }
+
   function onPointerDown(event) {
     state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (state.pointers.size === 1) {
       state.lastPoint = { x: event.clientX, y: event.clientY };
     } else if (state.pointers.size === 2) {
       state.lastDistance = distanceBetweenPointers();
+      state.lastCenter = centerBetweenPointers();
     }
     domElement?.setPointerCapture?.(event.pointerId);
   }
@@ -80,14 +131,24 @@ function createTouchControls(camera, domElement, options = {}) {
       state.phi = Math.max(config.minPolarAngle, Math.min(config.maxPolarAngle, state.phi));
       state.lastPoint = { x: event.clientX, y: event.clientY };
       updateCamera();
-    } else if (state.pointers.size === 2 && config.enableZoom) {
+    } else if (state.pointers.size === 2) {
       const distance = distanceBetweenPointers();
-      if (!distance || !state.lastDistance) return;
-      const scale = state.lastDistance / distance;
-      state.radius *= scale;
-      state.radius = Math.max(config.minDistance, Math.min(config.maxDistance, state.radius));
+      const center = centerBetweenPointers();
+      let changed = false;
+
+      if (config.enableZoom && distance && state.lastDistance) {
+        const scale = Math.pow(state.lastDistance / distance, config.zoomSpeed);
+        state.radius *= scale;
+        state.radius = Math.max(config.minDistance, Math.min(config.maxDistance, state.radius));
+        changed = true;
+      }
+      if (config.enablePan && center && state.lastCenter) {
+        changed = panTarget(center.x - state.lastCenter.x, center.y - state.lastCenter.y) || changed;
+      }
+
       state.lastDistance = distance;
-      updateCamera();
+      state.lastCenter = center;
+      if (changed) updateCamera();
     }
   }
 
@@ -97,6 +158,7 @@ function createTouchControls(camera, domElement, options = {}) {
     const remaining = Array.from(state.pointers.values());
     state.lastPoint = remaining[0] || null;
     state.lastDistance = state.pointers.size === 2 ? distanceBetweenPointers() : 0;
+    state.lastCenter = state.pointers.size === 2 ? centerBetweenPointers() : null;
   }
 
   // 绑定事件
@@ -124,7 +186,7 @@ function createTouchControls(camera, domElement, options = {}) {
       updateCamera();
     },
     setRadius: (r) => {
-      state.radius = r;
+      state.radius = Math.max(config.minDistance, Math.min(config.maxDistance, r));
       updateCamera();
     }
   };
@@ -229,33 +291,69 @@ function adaptAllControls(THREE) {
 function createGestureControls(camera, domElement, options = {}) {
   const controls = createTouchControls(camera, domElement, options);
 
-  // 添加双击重置（只统计同一指针的两次点击）
-  let lastTapTime = 0;
-  let lastTapPointerId = null;
-  const onPointerDown = (e) => {
-    const currentTime = Date.now();
-    const tapLength = currentTime - lastTapTime;
-    if (e.pointerId !== lastTapPointerId) {
-      // 不同指针的点击不算双击，重新计时
-      lastTapTime = 0;
-    } else if (tapLength < 300 && tapLength > 0) {
-      // 双击，重置视角
-      if (options.onDoubleTap) {
-        options.onDoubleTap();
-      }
+  // 小程序桥会为每次新触摸分配新的 pointerId，因此以两次完成的主触点 tap 判定双击。
+  const activeTaps = new Map();
+  let lastTap = null;
+  const onTapPointerDown = (event) => {
+    if (event.isPrimary === false) {
+      for (const tap of activeTaps.values()) tap.moved = true;
+      lastTap = null;
+      return;
     }
-    lastTapTime = currentTime;
-    lastTapPointerId = e.pointerId;
+    activeTaps.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+      time: event.timeStamp ?? Date.now(),
+      moved: false
+    });
+  };
+  const onTapPointerMove = (event) => {
+    const tap = activeTaps.get(event.pointerId);
+    if (!tap || tap.moved) return;
+    tap.moved = Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 10;
+  };
+  const onTapPointerUp = (event) => {
+    const tap = activeTaps.get(event.pointerId);
+    activeTaps.delete(event.pointerId);
+    if (!tap || tap.moved) return;
+
+    const currentTime = event.timeStamp ?? Date.now();
+    if (currentTime - tap.time > 300) {
+      lastTap = null;
+      return;
+    }
+
+    const interval = lastTap ? currentTime - lastTap.time : Infinity;
+    const distance = lastTap
+      ? Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y)
+      : Infinity;
+    if (interval >= 0 && interval <= 300 && distance <= 30) {
+      options.onDoubleTap?.();
+      lastTap = null;
+    } else {
+      lastTap = { x: event.clientX, y: event.clientY, time: currentTime };
+    }
+  };
+  const onTapPointerCancel = (event) => {
+    activeTaps.delete(event.pointerId);
   };
   if (domElement) {
-    domElement.addEventListener('pointerdown', onPointerDown);
+    domElement.addEventListener('pointerdown', onTapPointerDown);
+    domElement.addEventListener('pointermove', onTapPointerMove);
+    domElement.addEventListener('pointerup', onTapPointerUp);
+    domElement.addEventListener('pointercancel', onTapPointerCancel);
   }
 
   const originalDispose = controls.dispose;
   controls.dispose = () => {
     if (domElement) {
-      domElement.removeEventListener('pointerdown', onPointerDown);
+      domElement.removeEventListener('pointerdown', onTapPointerDown);
+      domElement.removeEventListener('pointermove', onTapPointerMove);
+      domElement.removeEventListener('pointerup', onTapPointerUp);
+      domElement.removeEventListener('pointercancel', onTapPointerCancel);
     }
+    activeTaps.clear();
+    lastTap = null;
     originalDispose.call(controls);
   };
 
