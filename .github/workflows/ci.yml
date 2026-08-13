@@ -20,6 +20,8 @@ jobs:
           - node: 20
             three: 0.160.0
           - node: 22
+            three: 0.174.0
+          - node: 22
             three: 0.183.1
           - node: 24
             three: 0.185.1

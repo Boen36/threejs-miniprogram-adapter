@@ -261,7 +261,7 @@ npm run check
 3. TypeScript 声明 consumer 编译；
 4. publint 与 npm tarball 检查。
 
-CI 额外覆盖 three.js r160、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB 与销毁重进页面。
+CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工清单：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB 与销毁重进页面。
 
 ## 已知限制
 

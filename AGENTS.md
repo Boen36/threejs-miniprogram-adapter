@@ -11,7 +11,7 @@
 ## 环境
 
 - 本机 node/npm 不在默认 PATH：`export PATH="/opt/homebrew/opt/node@24/bin:$PATH"`（v24.15.0）。
-- 完整检查：`npm run check`（语法 → 测试 → types 编译 → publint/pack）。CI 额外跑 three r160/r183/r185 矩阵。
+- 完整检查：`npm run check`（语法 → 测试 → types 编译 → publint/pack）。CI 额外跑 three r160/r174/r183/r185 矩阵。
 - 测试：`npm test`（`node --test`）。测试用手写的 wx/canvas mock（tests/basic.test.js:23-84），不依赖真机。
 
 ## 架构速览（文件级）
