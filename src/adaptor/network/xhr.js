@@ -37,6 +37,8 @@ class XMLHttpRequest extends EventTarget {
     this._withCredentials = false;
     this._upload = new XMLHttpRequestUpload();
     this._aborted = false;
+    this._sendFlag = false;
+    this._requestId = 0;
   }
 
   // 属性
@@ -87,6 +89,7 @@ class XMLHttpRequest extends EventTarget {
     this.responseURL = '';
     this._requestTask = null;
     this._aborted = false;
+    this._sendFlag = false;
 
     this._method = method.toUpperCase();
     this._url = url;
@@ -99,14 +102,14 @@ class XMLHttpRequest extends EventTarget {
   }
 
   setRequestHeader(header, value) {
-    if (this.readyState !== XMLHttpRequest.OPENED) {
+    if (this.readyState !== XMLHttpRequest.OPENED || this._sendFlag) {
       throw new Error('Invalid state');
     }
     this._requestHeaders[header] = value;
   }
 
   send(body = null) {
-    if (this.readyState !== XMLHttpRequest.OPENED) {
+    if (this.readyState !== XMLHttpRequest.OPENED || this._sendFlag) {
       throw new Error('Invalid state');
     }
 
@@ -115,6 +118,8 @@ class XMLHttpRequest extends EventTarget {
     }
 
     this._aborted = false;
+    this._sendFlag = true;
+    const requestId = ++this._requestId;
 
     // 构建请求参数
     const requestOptions = {
@@ -124,7 +129,7 @@ class XMLHttpRequest extends EventTarget {
       timeout: this._timeout || undefined,
       responseType: this._responseType === 'arraybuffer' ? 'arraybuffer' : 'text',
       success: (res) => {
-        if (this._aborted) return;
+        if (!this._isActiveRequest(requestId)) return;
 
         this.status = res.statusCode;
         this.statusText = this._getStatusText(res.statusCode);
@@ -154,27 +159,19 @@ class XMLHttpRequest extends EventTarget {
         }
 
         this.readyState = XMLHttpRequest.DONE;
+        this._sendFlag = false;
+        this._requestTask = null;
         this._callOnReadyStateChange();
         this._callOnLoad();
       },
       fail: (err) => {
-        if (this._aborted) return;
-
-        this.status = 0;
-        this.statusText = '';
-        this.readyState = XMLHttpRequest.DONE;
-        this._callOnReadyStateChange();
-
-        if (err.errMsg && err.errMsg.includes('timeout')) {
-          this._callOnTimeout();
-        } else {
-          this._callOnError(err);
-        }
+        if (!this._isActiveRequest(requestId)) return;
+        this._finishRequestError(err, requestId);
       }
     };
 
     // 添加 body
-    if (body) {
+    if (body !== null && body !== undefined) {
       if (body instanceof ArrayBuffer) {
         requestOptions.data = body;
       } else if (typeof body === 'string') {
@@ -192,11 +189,22 @@ class XMLHttpRequest extends EventTarget {
 
     // 执行请求
     if (typeof wx !== 'undefined' && wx.request) {
-      this._requestTask = wx.request(requestOptions);
+      let task;
+      try {
+        task = wx.request(requestOptions);
+      } catch (error) {
+        this._finishRequestError(error, requestId);
+        return;
+      }
+
+      // success/fail 在部分 mock 中可能同步触发；已结束的请求不得重新挂回 task。
+      if (!this._isActiveRequest(requestId)) return;
+      this._requestTask = task;
 
       // 下载进度：把 DownloadTask 的 onProgressUpdate 转发为 progress 事件
       if (this._requestTask && typeof this._requestTask.onProgressUpdate === 'function') {
         this._requestTask.onProgressUpdate((res) => {
+          if (!this._isActiveRequest(requestId)) return;
           this._callOnProgress(
             res.totalBytesWritten ?? res.totalBytesSent ?? 0,
             res.totalBytesExpectedToWrite ?? res.totalLength ?? 0
@@ -204,22 +212,39 @@ class XMLHttpRequest extends EventTarget {
         });
       }
     } else {
-      this._callOnError(new Error('wx.request is not available'));
+      this._finishRequestError(new Error('wx.request is not available'), requestId);
     }
   }
 
   abort() {
-    this._aborted = true;
+    const wasActive = this._sendFlag;
+    const task = this._requestTask;
 
-    if (this._requestTask && this._requestTask.abort) {
-      this._requestTask.abort();
+    this._aborted = wasActive;
+    this._sendFlag = false;
+    this._requestTask = null;
+    this._requestId++;
+
+    if (wasActive && task && typeof task.abort === 'function') {
+      try {
+        task.abort();
+      } catch {
+        // 无论底层任务是否成功取消，对外都完成 abort 生命周期。
+      }
     }
 
     this.readyState = XMLHttpRequest.UNSENT;
     this.status = 0;
     this.statusText = '';
+    this.response = '';
+    this.responseText = '';
+    this.responseXML = null;
+    this.responseURL = '';
+    this._responseHeaders = {};
 
-    this._callOnAbort();
+    if (wasActive) {
+      this._callOnAbort();
+    }
   }
 
   getAllResponseHeaders() {
@@ -252,6 +277,32 @@ class XMLHttpRequest extends EventTarget {
   }
 
   // 私有方法
+  _isActiveRequest(requestId) {
+    return this._sendFlag && !this._aborted && requestId === this._requestId;
+  }
+
+  _finishRequestError(error, requestId) {
+    if (!this._isActiveRequest(requestId)) return;
+
+    this.status = 0;
+    this.statusText = '';
+    this.response = '';
+    this.responseText = '';
+    this.responseXML = null;
+    this.responseURL = '';
+    this._responseHeaders = {};
+    this.readyState = XMLHttpRequest.DONE;
+    this._sendFlag = false;
+    this._requestTask = null;
+    this._callOnReadyStateChange();
+
+    if (error?.errMsg?.includes('timeout') || error?.message?.includes('timeout')) {
+      this._callOnTimeout();
+    } else {
+      this._callOnError(error);
+    }
+  }
+
   _getStatusText(status) {
     const statusTexts = {
       200: 'OK',

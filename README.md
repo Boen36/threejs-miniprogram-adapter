@@ -272,7 +272,8 @@ CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工
 - iOS 切后台/锁屏后 WebGL 上下文可能被系统销毁。页面 `onShow` 时调用 `adapter.canvas.recoverContext()` 可尝试恢复（重新获取上下文并分发 `webglcontextrestored` 让 three.js 重建状态）。
 - 本地文件读取（`file://`、`wxfile://`、`wx.env.USER_DATA_PATH` 前缀）仅限小程序沙箱（`usr`/`store` 目录），拒绝路径遍历。开发者工具中本地路径前缀为 `http://usr`，已自动兼容。
 - DRACO 解码在主线程同步执行，解码期间 UI 会阻塞；decoder 资源（wrapper + WASM）需由业务方随代码包分发。
-- `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。
+- `fetch` 支持 `AbortSignal`；本地 FileSystemManager 读取无法从宿主层中止，但取消后会立即拒绝并忽略晚到回调。
+- `createObjectURL` 写入的临时文件按 LRU 自动回收（上限 50 个 / 50MB）。新创建的单个超大 Blob 不会在返回前自我淘汰，可能暂时超过容量阈值；使用完仍应调用 `URL.revokeObjectURL()`。
 - DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
 - `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
 - 平台信息优先读取 `getWindowInfo()`、`getDeviceInfo()`、`getAppBaseInfo()`；单次合并读取中，仅在现代 API 缺失、返回不完整或抛错时调用一次 `getSystemInfoSync()` 补缺。

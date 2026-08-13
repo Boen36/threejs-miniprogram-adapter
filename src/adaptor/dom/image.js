@@ -48,11 +48,16 @@ class HTMLImageElement extends HTMLElement {
 
     // 使用小程序的 createImage
     let img;
-    if (this._imageFactory) {
-      img = this._imageFactory();
-    }
-    if (!img && typeof wx !== 'undefined' && wx.createImage) {
-      img = wx.createImage();
+    try {
+      if (this._imageFactory) {
+        img = this._imageFactory();
+      }
+      if (!img && typeof wx !== 'undefined' && wx.createImage) {
+        img = wx.createImage();
+      }
+    } catch (error) {
+      this._handleError(error);
+      return;
     }
     if (!img) {
       console.error('wx.createImage is not available');
@@ -85,10 +90,18 @@ class HTMLImageElement extends HTMLElement {
       this._handleError(err || new Error('Failed to load image'));
     };
 
-    img.src = src;
+    try {
+      img.src = src;
+    } catch (error) {
+      if (token === this._loadToken) {
+        this._handleError(error);
+      }
+    }
   }
 
   _handleError(error) {
+    this._complete = false;
+    this._loading = false;
     if (this.onerror) {
       this.onerror(error);
     }
