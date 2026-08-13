@@ -1,4 +1,5 @@
 <view class="container">
   <canvas type="webgl" id="webgl" class="webgl-canvas"></canvas>
   <view class="hud" wx:if="{{!isReady}}">加载进度：{{loadingProgress}}%</view>
+  <button class="local-button" size="mini" bindtap="loadFromLocal">选择本地 GLB</button>
 </view>

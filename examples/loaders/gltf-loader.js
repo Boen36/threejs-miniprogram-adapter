@@ -6,6 +6,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
+import {
+  configureRendererSize,
+  disposeObject3D,
+  disposeRenderingPage,
+  pauseRendering,
+  resumeRendering
+} from '../shared/runtime.js';
 
 Page({
   data: {
@@ -15,6 +22,8 @@ Page({
   },
 
   async onReady() {
+    this._disposed = false;
+    this._loadToken = 0;
     try {
       // 获取 canvas
       const canvas = await waitForCanvas('#webgl', this);
@@ -43,8 +52,10 @@ Page({
         canvas: adaptedCanvas,
         antialias: true
       });
-      renderer.setSize(canvas.width, canvas.height);
-      renderer.setPixelRatio(wx.getSystemInfoSync().pixelRatio);
+      this._renderer = renderer;
+      this._scene = scene;
+      this._camera = camera;
+      configureRendererSize(adapter, renderer, camera, canvas);
       renderer.shadowMap.enabled = true;
 
       // 光照
@@ -63,6 +74,7 @@ Page({
 
       // 动画循环
       const animate = () => {
+        if (this._disposed) return;
         this._animationFrame = canvas.requestAnimationFrame(animate);
         renderer.render(scene, camera);
       };
@@ -70,11 +82,8 @@ Page({
 
       animate();
 
-      this._renderer = renderer;
-      this._scene = scene;
-      this._camera = camera;
-
     } catch (error) {
+      disposeRenderingPage(this);
       console.error('初始化失败:', error);
       wx.showToast({ title: '加载失败: ' + error.message, icon: 'none' });
     }
@@ -82,11 +91,23 @@ Page({
 
   loadModel(scene, url, camera) {
     const loader = new GLTFLoader();
+    const loadToken = ++this._loadToken;
+    this.setData({ isReady: false, loadingProgress: 0 });
 
     loader.load(
       url,
       (gltf) => {
         const model = gltf.scene;
+        if (this._disposed || loadToken !== this._loadToken) {
+          disposeObject3D(model);
+          return;
+        }
+
+        if (this._model) {
+          scene.remove(this._model);
+          disposeObject3D(this._model);
+        }
+        this._model = model;
 
         // 计算包围盒以居中模型
         const box = new THREE.Box3().setFromObject(model);
@@ -97,14 +118,12 @@ Page({
         const maxDim = Math.max(size.x, size.y, size.z);
         const fov = 45;
         const cameraZ = Math.abs(maxDim / 2 / Math.tan((fov * Math.PI / 180) / 2));
-        camera.position.z = cameraZ * 2;
-        camera.position.y = center.y;
-        camera.lookAt(center);
-
         // 居中模型
         model.position.x = -center.x;
         model.position.y = -center.y;
         model.position.z = -center.z;
+        camera.position.set(0, 0, Math.max(cameraZ * 2, 1));
+        camera.lookAt(0, 0, 0);
 
         // 启用阴影
         model.traverse((child) => {
@@ -121,52 +140,47 @@ Page({
         wx.showToast({ title: '模型加载完成', icon: 'success' });
       },
       (progress) => {
-        const percent = (progress.loaded / progress.total) * 100;
-        this.setData({ loadingProgress: Math.round(percent) });
+        if (loadToken !== this._loadToken || this._disposed) return;
+        if (progress.total > 0) {
+          const percent = (progress.loaded / progress.total) * 100;
+          this.setData({ loadingProgress: Math.round(percent) });
+        }
       },
       (error) => {
+        if (loadToken !== this._loadToken || this._disposed) return;
         console.error('模型加载失败:', error);
         wx.showToast({ title: '模型加载失败', icon: 'none' });
       }
     );
   },
 
-  // 从本地文件加载
+  // 从本地文件加载（单个 GLB 可自包含 buffer 与纹理）
   loadFromLocal() {
     wx.chooseMessageFile({
       count: 1,
       type: 'file',
-      extension: ['gltf', 'glb'],
+      extension: ['glb'],
       success: (res) => {
         const tempFilePath = res.tempFiles[0].path;
         this.setData({ modelUrl: tempFilePath });
-        this.onReady(); // 重新加载
+        if (this._scene && this._camera) {
+          this.loadModel(this._scene, tempFilePath, this._camera);
+        }
       }
     });
   },
 
   onUnload() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-    }
-    if (this._renderer) {
-      this._renderer.dispose();
-    }
-    this._adapter?.dispose();
+    this._loadToken++;
+    this._model = null;
+    disposeRenderingPage(this);
   },
 
   onHide() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-      this._animationFrame = null;
-    }
+    pauseRendering(this);
   },
 
   onShow() {
-    if (!this._adapter) return;
-    this._adapter.canvas.recoverContext();
-    if (!this._animationFrame && this._animate) {
-      this._animate();
-    }
+    resumeRendering(this);
   }
 });

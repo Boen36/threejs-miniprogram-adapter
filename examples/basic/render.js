@@ -5,6 +5,12 @@
 
 import * as THREE from 'three';
 import { adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
+import {
+  configureRendererSize,
+  disposeRenderingPage,
+  pauseRendering,
+  resumeRendering
+} from '../shared/runtime.js';
 
 Page({
   data: {
@@ -12,6 +18,7 @@ Page({
   },
 
   async onReady() {
+    this._disposed = false;
     try {
       // 1. 获取 canvas
       const canvas = await waitForCanvas('#webgl', this);
@@ -21,6 +28,8 @@ Page({
         debug: true
       });
       const { canvas: adaptedCanvas, environment } = adapter;
+      this._adapter = adapter;
+      this._nativeCanvas = canvas;
 
       console.log('环境信息:', environment);
 
@@ -43,8 +52,10 @@ Page({
         antialias: true,
         alpha: true
       });
-      renderer.setSize(canvas.width, canvas.height);
-      renderer.setPixelRatio(environment.supportWebGL2 ? 2 : 1);
+      this._renderer = renderer;
+      this._scene = scene;
+      this._camera = camera;
+      configureRendererSize(adapter, renderer, camera, canvas);
       console.log('WebGL 报告:', adapter.inspectWebGL());
 
       // 6. 创建立方体
@@ -67,6 +78,7 @@ Page({
 
       // 8. 动画循环
       const animate = () => {
+        if (this._disposed) return;
         this._animationFrame = canvas.requestAnimationFrame(animate);
 
         // 旋转立方体
@@ -81,14 +93,8 @@ Page({
 
       this.setData({ isReady: true });
 
-      // 保存引用以便清理
-      this._renderer = renderer;
-      this._scene = scene;
-      this._camera = camera;
-      this._adapter = adapter;
-      this._nativeCanvas = canvas;
-
     } catch (error) {
+      disposeRenderingPage(this);
       console.error('初始化失败:', error);
       wx.showModal({
         title: '错误',
@@ -99,30 +105,14 @@ Page({
   },
 
   onHide() {
-    // 后台暂停渲染，避免无效绘制
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-      this._animationFrame = null;
-    }
+    pauseRendering(this);
   },
 
   onShow() {
-    // iOS 切后台可能销毁 WebGL 上下文，回前台时尝试恢复
-    if (!this._adapter) return;
-    this._adapter.canvas.recoverContext();
-    if (!this._animationFrame && this._animate) {
-      this._animate();
-    }
+    resumeRendering(this);
   },
 
   onUnload() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-    }
-    // 清理资源
-    if (this._renderer) {
-      this._renderer.dispose();
-    }
-    this._adapter?.dispose();
+    disposeRenderingPage(this);
   }
 });

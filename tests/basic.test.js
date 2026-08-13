@@ -240,6 +240,28 @@ describe('event compatibility', () => {
     result.dispose();
   });
 
+  test('only emits pointermove for touches reported as changed', () => {
+    const { canvas } = createMockCanvas();
+    const result = adaptForMiniProgram(canvas, { injectGlobals: false });
+    const pointerIds = [];
+    result.canvas.addEventListener('pointermove', event => {
+      pointerIds.push(event.pointerId);
+    });
+
+    const first = { identifier: 0, x: 10, y: 10 };
+    const second = { identifier: 1, x: 20, y: 20 };
+    const movedFirst = { identifier: 0, x: 15, y: 10 };
+    result.touchEventHandlers.touchstart({ touches: [first], changedTouches: [first] });
+    result.touchEventHandlers.touchstart({ touches: [first, second], changedTouches: [second] });
+    result.touchEventHandlers.touchmove({
+      touches: [movedFirst, second],
+      changedTouches: [movedFirst]
+    });
+
+    assert.deepEqual(pointerIds, [1]);
+    result.dispose();
+  });
+
   test('drives the current Three.js OrbitControls through forwarded WXML events', () => {
     const { canvas } = createMockCanvas();
     canvas.height = 200;
@@ -305,6 +327,101 @@ describe('network primitives', () => {
 });
 
 describe('controls plugins', () => {
+  test('recognizes two completed taps when the bridge assigns new pointer IDs', () => {
+    const { canvas } = createMockCanvas();
+    const result = adaptForMiniProgram(canvas, { injectGlobals: false });
+    const camera = {
+      position: { x: 0, y: 0, z: 10, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      lookAt() {}
+    };
+    let doubleTaps = 0;
+    const controls = ControlPlugins.createGestureControls(camera, result.canvas, {
+      onDoubleTap: () => doubleTaps++
+    });
+    const originalNow = Date.now;
+    let now = 1000;
+    Date.now = () => now;
+
+    try {
+      const first = { identifier: 0, x: 40, y: 50 };
+      result.touchEventHandlers.touchstart({ touches: [first], changedTouches: [first] });
+      result.touchEventHandlers.touchend({ touches: [], changedTouches: [first] });
+
+      now = 1100;
+      const second = { identifier: 0, x: 42, y: 51 };
+      result.touchEventHandlers.touchstart({ touches: [second], changedTouches: [second] });
+      result.touchEventHandlers.touchend({ touches: [], changedTouches: [second] });
+
+      assert.equal(doubleTaps, 1);
+    } finally {
+      Date.now = originalNow;
+      controls.dispose();
+      result.dispose();
+    }
+  });
+
+  test('pans the camera target when two pointers move together', () => {
+    const { canvas } = createMockCanvas();
+    const result = adaptForMiniProgram(canvas, { injectGlobals: false });
+    const lookTargets = [];
+    const camera = {
+      position: { x: 0, y: 0, z: 10, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      lookAt(x, y, z) { lookTargets.push({ x, y, z }); }
+    };
+    const controls = ControlPlugins.createTouchControls(camera, result.canvas, {
+      enableRotate: false,
+      enableZoom: false,
+      enablePan: true
+    });
+
+    const first = { identifier: 0, x: 0, y: 0 };
+    const second = { identifier: 1, x: 100, y: 0 };
+    result.touchEventHandlers.touchstart({ touches: [first], changedTouches: [first] });
+    result.touchEventHandlers.touchstart({ touches: [first, second], changedTouches: [second] });
+
+    const movedFirst = { identifier: 0, x: 10, y: 0 };
+    const movedSecond = { identifier: 1, x: 110, y: 0 };
+    result.touchEventHandlers.touchmove({
+      touches: [movedFirst, movedSecond],
+      changedTouches: [movedFirst, movedSecond]
+    });
+
+    assert.notEqual(camera.position.x, 0);
+    assert.notEqual(lookTargets.at(-1).x, 0);
+    assert.ok(Math.abs(Math.hypot(camera.position.x - lookTargets.at(-1).x, camera.position.z) - 10) < 1e-6);
+    controls.dispose();
+    result.dispose();
+  });
+
+  test('applies zoomSpeed to two-pointer zoom', () => {
+    const { canvas } = createMockCanvas();
+    const result = adaptForMiniProgram(canvas, { injectGlobals: false });
+    const camera = {
+      position: { x: 0, y: 0, z: 10, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      lookAt() {}
+    };
+    const controls = ControlPlugins.createTouchControls(camera, result.canvas, {
+      enableRotate: false,
+      enablePan: false,
+      enableZoom: true,
+      zoomSpeed: 0
+    });
+
+    const first = { identifier: 0, x: 0, y: 0 };
+    const second = { identifier: 1, x: 100, y: 0 };
+    result.touchEventHandlers.touchstart({ touches: [first], changedTouches: [first] });
+    result.touchEventHandlers.touchstart({ touches: [first, second], changedTouches: [second] });
+    const movedSecond = { identifier: 1, x: 200, y: 0 };
+    result.touchEventHandlers.touchmove({
+      touches: [first, movedSecond],
+      changedTouches: [movedSecond]
+    });
+
+    assert.equal(camera.position.z, 10);
+    controls.dispose();
+    result.dispose();
+  });
+
   test('createGestureControls removes its listeners on dispose', () => {
     const listeners = new Map();
     const domElement = {
@@ -327,9 +444,11 @@ describe('controls plugins', () => {
     const controls = ControlPlugins.createGestureControls(camera, domElement, {
       onDoubleTap: () => {}
     });
-    // createTouchControls 注册 4 类 pointer 监听，createGestureControls 额外注册 1 个 pointerdown
+    // createTouchControls 注册 4 类 pointer 监听，createGestureControls 额外注册完整的 tap 监听
     assert.equal(listeners.get('pointerdown').length, 2);
-    assert.equal(listeners.get('pointermove').length, 1);
+    assert.equal(listeners.get('pointermove').length, 2);
+    assert.equal(listeners.get('pointerup').length, 2);
+    assert.equal(listeners.get('pointercancel').length, 2);
 
     controls.dispose();
     assert.equal(listeners.get('pointerdown').length, 0);

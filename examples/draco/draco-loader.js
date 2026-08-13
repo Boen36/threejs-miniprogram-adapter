@@ -9,6 +9,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MiniProgramDRACOLoader, adaptForMiniProgram, waitForCanvas } from 'threejs-miniprogram-adapter';
+import {
+  configureRendererSize,
+  disposeObject3D,
+  disposeRenderingPage,
+  pauseRendering,
+  resumeRendering
+} from '../shared/runtime.js';
 
 // 代码包内的 decoder 工厂：CommonJS require
 const DracoDecoderModule = require('../libs/draco/draco_wasm_wrapper.js');
@@ -20,6 +27,7 @@ Page({
   },
 
   async onReady() {
+    this._disposed = false;
     try {
       const canvas = await waitForCanvas('#webgl', this);
       const adapter = adaptForMiniProgram(canvas);
@@ -38,8 +46,10 @@ Page({
         canvas: adapter.canvas,
         antialias: true
       });
-      renderer.setSize(canvas.width, canvas.height);
-      renderer.setPixelRatio(wx.getSystemInfoSync().pixelRatio);
+      this._renderer = renderer;
+      this._scene = scene;
+      this._camera = camera;
+      configureRendererSize(adapter, renderer, camera, canvas);
 
       // 光照
       scene.add(new THREE.AmbientLight(0xffffff, 0.5));
@@ -53,6 +63,7 @@ Page({
       const dracoLoader = new MiniProgramDRACOLoader()
         .setDecoderModule(DracoDecoderModule)
         .setDecoderBinary(wasmBinary);
+      this._dracoLoader = dracoLoader;
 
       // 模型：代码包内的 draco 压缩 GLB
       this.setData({ status: '解码模型…' });
@@ -61,12 +72,17 @@ Page({
       const gltfLoader = new GLTFLoader();
       gltfLoader.setDRACOLoader(dracoLoader);
       const gltf = await gltfLoader.parseAsync(glbBinary, '');
+      if (this._disposed) {
+        disposeObject3D(gltf.scene);
+        return;
+      }
       scene.add(gltf.scene);
 
       this.setData({ isReady: true, status: '' });
 
       // 动画循环
       const animate = () => {
+        if (this._disposed) return;
         this._animationFrame = canvas.requestAnimationFrame(animate);
         gltf.scene.rotation.y += 0.01;
         renderer.render(scene, camera);
@@ -74,37 +90,26 @@ Page({
       this._animate = animate;
       animate();
 
-      this._renderer = renderer;
-      this._dracoLoader = dracoLoader;
     } catch (error) {
+      this._dracoLoader?.dispose();
+      this._dracoLoader = null;
+      disposeRenderingPage(this);
       console.error('初始化失败:', error);
       wx.showToast({ title: '加载失败: ' + error.message, icon: 'none' });
     }
   },
 
   onUnload() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-    }
-    if (this._renderer) {
-      this._renderer.dispose();
-    }
     this._dracoLoader?.dispose();
-    this._adapter?.dispose();
+    this._dracoLoader = null;
+    disposeRenderingPage(this);
   },
 
   onHide() {
-    if (this._animationFrame && this._nativeCanvas?.cancelAnimationFrame) {
-      this._nativeCanvas.cancelAnimationFrame(this._animationFrame);
-      this._animationFrame = null;
-    }
+    pauseRendering(this);
   },
 
   onShow() {
-    if (!this._adapter) return;
-    this._adapter.canvas.recoverContext();
-    if (!this._animationFrame && this._animate) {
-      this._animate();
-    }
+    resumeRendering(this);
   }
 });
