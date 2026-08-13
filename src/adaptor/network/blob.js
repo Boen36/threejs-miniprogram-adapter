@@ -113,36 +113,6 @@ class Blob {
     const text = await this.text();
     return JSON.parse(text);
   }
-
-  // 转换为 Stream（简化实现）
-  stream() {
-    const parts = this._parts;
-    let partIndex = 0;
-    let byteIndex = 0;
-
-    return new ReadableStream({
-      pull(controller) {
-        if (partIndex >= parts.length) {
-          controller.close();
-          return;
-        }
-
-        const part = parts[partIndex];
-        if (part instanceof Uint8Array) {
-          controller.enqueue(part.slice(byteIndex));
-          partIndex++;
-          byteIndex = 0;
-        } else if (part instanceof Blob) {
-          // 简化处理
-          part.arrayBuffer().then(buffer => {
-            controller.enqueue(new Uint8Array(buffer));
-            partIndex++;
-            byteIndex = 0;
-          });
-        }
-      }
-    });
-  }
 }
 
 // File 类
@@ -190,11 +160,12 @@ class FileReader extends EventTarget {
 
   // 读取为文本
   readAsText(blob, encoding = 'UTF-8') {
+    // 规范：非法编码标签在调用时同步抛 RangeError，而不是让读取挂起/静默失败
+    const decoder = new TextDecoder(encoding);
     this._startRead(blob);
     blob.arrayBuffer().then(
       buffer => {
         if (this._aborted) return;
-        const decoder = new TextDecoder(encoding);
         this.result = decoder.decode(buffer);
         this.readyState = FileReader.DONE;
         this._callOnLoad();

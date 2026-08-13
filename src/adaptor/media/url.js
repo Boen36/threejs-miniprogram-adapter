@@ -182,9 +182,11 @@ class URL {
 
     if (match) {
       this.protocol = match[1].toLowerCase() + ':';
-      this.host = match[2];
-      this.hostname = match[2].split(':')[0];
-      this.port = match[2].includes(':') ? match[2].split(':')[1] : '';
+      // 去掉 userinfo（user:pass@）再拆 host/port；小程序资源 URL 基本不含凭据，按规范解析
+      const authority = match[2].replace(/^[^@]*@/, '');
+      this.host = authority;
+      this.hostname = authority.split(':')[0];
+      this.port = authority.includes(':') ? authority.split(':')[1] : '';
       this.pathname = match[3] || '/';
       this.search = match[4] || '';
       this.hash = match[5] || '';

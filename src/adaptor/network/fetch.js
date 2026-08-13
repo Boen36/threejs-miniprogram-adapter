@@ -129,7 +129,7 @@ class Request {
   }
 
   json() {
-    return Promise.resolve(this.body ? JSON.parse(String(this.body)) : null);
+    return Promise.resolve().then(() => (this.body ? JSON.parse(String(this.body)) : null));
   }
 
   blob() {
@@ -234,7 +234,8 @@ class Response {
 
 // fetch 函数实现
 async function fetch(input, init = {}) {
-  const request = input instanceof Request ? input : new Request(input, init);
+  // 统一走 Request 构造：input 为 Request 时按 WHATWG 语义在副本上合并 init（含 signal 覆盖）
+  const request = new Request(input, init);
 
   // 检查 signal
   if (request.signal && request.signal.aborted) {
@@ -419,16 +420,20 @@ function readLocalFile(filePath, resolve, reject) {
   });
 }
 
-// 处理 data URL
 function handleDataUrl(url) {
-  const match = url.match(/^data:([^;,]+)?(;base64)?,(.+)$/);
-  if (!match) {
+  const commaIndex = url.indexOf(',');
+  if (commaIndex === -1) {
     return Response.error();
   }
 
-  const [, mimeType = 'text/plain', isBase64, data] = match;
-  let buffer;
+  const meta = url.slice('data:'.length, commaIndex);
+  const data = url.slice(commaIndex + 1);
 
+  // metadata 以 ";base64"（大小写不敏感）结尾时按 base64 解码；
+  // 其余参数（如 ;charset=utf-8）保留在 MIME 类型里。
+  const isBase64 = /;base64$/i.test(meta);
+  const mimeType = (isBase64 ? meta.slice(0, -';base64'.length) : meta).split(';')[0].trim() || 'text/plain';
+  let buffer;
   if (isBase64) {
     buffer = base64ToArrayBuffer(data);
   } else {

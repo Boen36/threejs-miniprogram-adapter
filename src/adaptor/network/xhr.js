@@ -70,9 +70,23 @@ class XMLHttpRequest extends EventTarget {
 
   // 方法
   open(method, url, async = true, user = null, password = null) {
-    if (this.readyState !== XMLHttpRequest.UNSENT) {
+    // 规范：仅在请求进行中（OPENED/HEADERS_RECEIVED/LOADING）禁止 open；
+    // DONE 时允许重置实例复用（连接池场景）。
+    if (this.readyState !== XMLHttpRequest.UNSENT && this.readyState !== XMLHttpRequest.DONE) {
       throw new Error('Invalid state');
     }
+
+    // 复用实例时重置请求状态
+    this._requestHeaders = {};
+    this._responseHeaders = {};
+    this.status = 0;
+    this.statusText = '';
+    this.response = '';
+    this.responseText = '';
+    this.responseXML = null;
+    this.responseURL = '';
+    this._requestTask = null;
+    this._aborted = false;
 
     this._method = method.toUpperCase();
     this._url = url;
@@ -179,6 +193,16 @@ class XMLHttpRequest extends EventTarget {
     // 执行请求
     if (typeof wx !== 'undefined' && wx.request) {
       this._requestTask = wx.request(requestOptions);
+
+      // 下载进度：把 DownloadTask 的 onProgressUpdate 转发为 progress 事件
+      if (this._requestTask && typeof this._requestTask.onProgressUpdate === 'function') {
+        this._requestTask.onProgressUpdate((res) => {
+          this._callOnProgress(
+            res.totalBytesWritten ?? res.totalBytesSent ?? 0,
+            res.totalBytesExpectedToWrite ?? res.totalLength ?? 0
+          );
+        });
+      }
     } else {
       this._callOnError(new Error('wx.request is not available'));
     }
@@ -321,57 +345,55 @@ class XMLHttpRequestUpload extends EventTarget {
   }
 }
 
-// FormData 简单实现
+// FormData 简单实现（WHATWG 条目列表语义：同名可多值）
 class FormData {
   constructor() {
-    this._data = new Map();
+    this._entries = [];
   }
 
   append(name, value, filename) {
-    if (filename && value instanceof Blob) {
-      this._data.set(name, { value, filename });
-    } else {
-      this._data.set(name, value);
-    }
+    this._entries.push({ name, value, filename: filename || null });
   }
 
   delete(name) {
-    this._data.delete(name);
+    this._entries = this._entries.filter((entry) => entry.name !== name);
   }
 
   get(name) {
-    return this._data.get(name) || null;
+    const entry = this._entries.find((entry) => entry.name === name);
+    return entry ? entry.value : null;
   }
 
   getAll(name) {
-    const value = this._data.get(name);
-    return value ? [value] : [];
+    return this._entries.filter((entry) => entry.name === name).map((entry) => entry.value);
   }
 
   has(name) {
-    return this._data.has(name);
+    return this._entries.some((entry) => entry.name === name);
   }
 
   set(name, value, filename) {
-    this.append(name, value, filename);
+    this._entries = this._entries
+      .filter((entry) => entry.name !== name)
+      .concat([{ name, value, filename: filename || null }]);
   }
 
   forEach(callback, thisArg) {
-    this._data.forEach((value, key) => {
-      callback.call(thisArg, value, key, this);
-    });
+    for (const entry of this._entries) {
+      callback.call(thisArg, entry.value, entry.name, this);
+    }
   }
 
   entries() {
-    return this._data.entries();
+    return this._entries.map((entry) => [entry.name, entry.value])[Symbol.iterator]();
   }
 
   keys() {
-    return this._data.keys();
+    return this._entries.map((entry) => entry.name)[Symbol.iterator]();
   }
 
   values() {
-    return this._data.values();
+    return this._entries.map((entry) => entry.value)[Symbol.iterator]();
   }
 }
 

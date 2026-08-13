@@ -197,8 +197,7 @@ describe('FormData', () => {
     form.append('name', 'value');
     form.append('file', new Blob(['x']), 'a.txt');
     assert.equal(form.get('name'), 'value');
-    assert.equal(form.get('file').filename, 'a.txt');
-    assert.ok(form.get('file').value instanceof Blob);
+    assert.ok(form.get('file') instanceof Blob);
     assert.equal(form.has('name'), true);
     assert.equal(form.getAll('name').length, 1);
     form.delete('name');

@@ -231,12 +231,25 @@ function enhanceAllLoaders(THREE) {
  */
 function createCachedLoader(THREE, LoaderClass) {
   const cache = new Map();
+  const MAX_CACHE_ENTRIES = 50;
+
+  function remember(key, value) {
+    if (cache.has(key)) {
+      cache.delete(key); // 命中时刷新为最近使用
+    } else if (cache.size >= MAX_CACHE_ENTRIES) {
+      // 超过上限按 LRU 淘汰最旧条目（与 objectURL 临时文件回收策略一致）
+      const oldestKey = cache.keys().next().value;
+      cache.delete(oldestKey);
+    }
+    cache.set(key, value);
+  }
 
   return class CachedLoader extends LoaderClass {
     load(url, onLoad, onProgress, onError) {
       // 检查缓存
       if (cache.has(url)) {
         const cached = cache.get(url);
+        remember(url, cached);
         if (onLoad) {
           setTimeout(() => onLoad(cached), 0);
         }
@@ -245,7 +258,7 @@ function createCachedLoader(THREE, LoaderClass) {
 
       // 包装 onLoad 以缓存结果
       const wrappedOnLoad = (result) => {
-        cache.set(url, result);
+        remember(url, result);
         if (onLoad) onLoad(result);
       };
 

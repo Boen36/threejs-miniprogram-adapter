@@ -75,9 +75,9 @@ class HTMLCanvasElement extends HTMLElement {
       return null;
     }
 
-    // 如果已经创建过 context，直接返回
-    if (this._context && this._contextType === contextType) {
-      return this._context;
+    // 已创建过上下文：同类型直接复用，不同类型按浏览器语义返回 null
+    if (this._context) {
+      return this._contextType === contextType ? this._context : null;
     }
 
     this._contextType = contextType;
