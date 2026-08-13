@@ -9,6 +9,7 @@ import { installPolyfills } from '../src/index.js';
  * 其余方法 no-op。返回的对象用于驱动真实 three.js WebGLRenderer。
  */
 function createRenderableGL() {
+  const calls = [];
   const constants = {
     VERSION: 0x1f02,
     VENDOR: 0x1f00,
@@ -31,6 +32,7 @@ function createRenderableGL() {
   };
 
   const gl = {
+    calls,
     ...constants,
     getParameter(parameter) {
       if (parameter === this.VERSION) return 'WebGL 2.0';
@@ -117,7 +119,10 @@ function createRenderableGL() {
     'stencilMaskSeparate', 'stencilOp', 'stencilOpSeparate'
   ];
   noopMethods.forEach(name => {
-    gl[name] = () => undefined;
+    gl[name] = (...args) => {
+      calls.push([name, ...args]);
+      return undefined;
+    };
   });
 
   return gl;
@@ -139,14 +144,47 @@ describe('WebGLRenderer smoke test', () => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, 2, 0.1, 100);
     camera.position.set(0, 0, 4);
-    scene.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial()));
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());
+    scene.add(mesh);
 
     renderer.setAnimationLoop(() => {});
     renderer.render(scene, camera);
     renderer.setAnimationLoop(null);
     renderer.dispose();
+    mesh.geometry.dispose();
+    mesh.material.dispose();
 
     // 构造 + 启动/停止动画循环 + 渲染一帧 + 销毁全程未抛错
     assert.ok(true);
+  });
+
+  test('continues rendering after the native context is replaced', () => {
+    let currentGl = createRenderableGL();
+    const native = { width: 300, height: 150, getContext: () => currentGl };
+    const canvas = new HTMLCanvasElement(native);
+    installPolyfills(globalThis);
+
+    const renderer = new THREE.WebGLRenderer({ canvas });
+    const wrapper = renderer.getContext();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, 2, 0.1, 100);
+    camera.position.set(0, 0, 4);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());
+    scene.add(mesh);
+    renderer.render(scene, camera);
+
+    currentGl = createRenderableGL();
+    assert.equal(canvas.recoverContext(), true);
+    assert.equal(renderer.getContext(), wrapper, 'renderer should keep the stable wrapper');
+    assert.equal(wrapper._rawContext, currentGl);
+
+    renderer.render(scene, camera);
+    assert.ok(
+      currentGl.calls.some(call => call[0] === 'drawElements'),
+      'render calls after recovery should reach the replacement context'
+    );
+    renderer.dispose();
+    mesh.geometry.dispose();
+    mesh.material.dispose();
   });
 });
