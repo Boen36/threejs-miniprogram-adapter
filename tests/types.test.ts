@@ -30,6 +30,7 @@ LoaderPlugins.enhanceAllLoaders({});
 
 // —— Loader 插件：运行时导出与声明对齐 ——
 LoaderPlugins.enhanceTextureLoader({});
+LoaderPlugins.enhanceTextureLoader({}, { document: result.document });
 LoaderPlugins.enhanceGLTFLoader({});
 LoaderPlugins.enhanceOBJLoader({});
 LoaderPlugins.enhanceMTLLoader({});
@@ -49,6 +50,7 @@ void resolvedPath;
 LoaderPlugins.createCachedLoader({}, class {});
 LoaderPlugins.loadTextureFromBase64({}, 'data:image/png;base64,AAA=');
 LoaderPlugins.loadTextureFromFile({}, 'wxfile://tmp/tex.png');
+LoaderPlugins.loadTextureFromFile({}, 'wxfile://tmp/tex.png', undefined, undefined, { document: result.document });
 
 const dracoLoader = new adapter.MiniProgramDRACOLoader();
 dracoLoader

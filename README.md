@@ -215,16 +215,19 @@ loader.load('https://example.com/model-draco.glb', gltf => scene.add(gltf.scene)
 | `pixelRatio` | 系统值 | 作为 `updateSize()` 的返回值 |
 | `checkWebGLCapabilities` | `false` | 适配时立即创建上下文；通常应保持关闭 |
 | `webglContextAttributes` | — | 仅供立即能力检查使用 |
-| `globalObject` | `globalThis` | 自定义 polyfill 注入目标，主要用于隔离测试 |
+| `globalObject` | `globalThis` | 自定义 polyfill 注入目标；多 Canvas 并发资源加载时可用于隔离 Document |
 
 返回值包括：
 
 - `canvas`：供 `THREE.WebGLRenderer` 使用的 Canvas。
+- `document`：本 adapter 独立的 Document；其 `createElement('img')` 和 `Image` 使用当前原生 Canvas 的图片工厂。
 - `touchEventHandlers`：WXML 事件转发目标。
 - `updateSize()`：优先通过 `wx.getWindowInfo()` 读取建议的窗口尺寸与像素比；旧基础库回退到 `getSystemInfoSync()`。
 - `inspectWebGL()`：在 renderer 创建后读取 WebGL 能力。
 - `webglReport`：最近一次能力报告，未检查时为 `null`。
-- `dispose()`：解绑触摸桥并移除 document 中的 Canvas 引用。
+- `dispose()`：解绑触摸桥、移除 Document 中的 Canvas 引用，并在共享全局上恢复前一个未销毁 adapter 的 Document/Image。
+
+每次 `adaptForMiniProgram()` 都创建独立 Document，因此不同 `globalObject` 下的多 Canvas 可并行加载图片。多个 adapter 共用 `globalThis` 时，最后创建且未销毁的 adapter 是当前页面；页面栈式进入/退出会自动切换和恢复全局 `document`/`Image`。微信的 [`Canvas.createImage()`](https://developers.weixin.qq.com/miniprogram/dev/api/canvas/Canvas.createImage.html) 图片对象不能混用 2D 与 WebGL 创建路径，因此两个共享全局的页面若要在后台同时创建图片，调用方应隔离 `globalObject`，或在支持的 Loader helper 中传 `{ document: adapter.document }`。
 
 ### 其他导出
 
@@ -277,7 +280,7 @@ CI 额外覆盖 three.js r160、r174、r183、r185。发布前仍需完成人工
 - DOM、Audio、Video、URL、Blob 等均是最小兼容实现，不等价于浏览器标准实现。
 - `checkCompatibility()` 的 WebGL2 结论基于基础库版本（2.24.0）；实际能力以创建 renderer 和 `inspectWebGL()` 为准。
 - 平台信息优先读取 `getWindowInfo()`、`getDeviceInfo()`、`getAppBaseInfo()`；单次合并读取中，仅在现代 API 缺失、返回不完整或抛错时调用一次 `getSystemInfoSync()` 补缺。
-- 多页面或多 Canvas 可用，但仍建议每页独立创建并在 `onUnload` 调用 `dispose()`。
+- 多页面页面栈和多 Canvas 均应每实例独立创建 adapter，并在 `onUnload` 调用 `dispose()`。共享 `globalThis` 时只有栈顶 adapter 的 Document/Image 是全局当前值；后台并发图片加载需隔离 `globalObject` 或显式传入 `adapter.document`。
 
 ## 贡献
 

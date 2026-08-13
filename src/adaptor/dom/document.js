@@ -12,10 +12,14 @@ class Document extends HTMLElement {
   constructor() {
     super('#document');
     this.nodeType = 9;
+    this._defaultView = null;
     this._elementsById = new Map();
     this._head = new HTMLElement('head');
     this._body = new HTMLElement('body');
     this._documentElement = new HTMLElement('html');
+    this._head._ownerDocument = this;
+    this._body._ownerDocument = this;
+    this._documentElement._ownerDocument = this;
     this._documentElement.appendChild(this._head);
     this._documentElement.appendChild(this._body);
     this._canvas = null;
@@ -35,8 +39,11 @@ class Document extends HTMLElement {
   }
 
   get defaultView() {
-    // 返回 window 对象
-    return typeof global !== 'undefined' ? global : this;
+    return this._defaultView || (typeof global !== 'undefined' ? global : this);
+  }
+
+  setDefaultView(view) {
+    this._defaultView = view || null;
   }
 
   get location() {
@@ -156,15 +163,18 @@ class Document extends HTMLElement {
 
   createElement(tagName) {
     tagName = tagName.toLowerCase();
-    // 动态导入以避免循环依赖
+    let element;
     switch (tagName) {
       case 'canvas':
-        return new HTMLCanvasElement();
+        element = new HTMLCanvasElement();
+        break;
       case 'img':
       case 'image':
-        return new HTMLImageElement(() => this._canvas?.createImage());
+        element = new HTMLImageElement(() => this._canvas?.createImage());
+        break;
       case 'video':
-        return new HTMLVideoElement();
+        element = new HTMLVideoElement();
+        break;
       case 'div':
       case 'span':
       case 'p':
@@ -177,10 +187,13 @@ class Document extends HTMLElement {
       case 'ul':
       case 'ol':
       case 'li':
-        return new HTMLElement(tagName);
+        element = new HTMLElement(tagName);
+        break;
       default:
-        return new HTMLElement(tagName);
+        element = new HTMLElement(tagName);
     }
+    element._ownerDocument = this;
+    return element;
   }
 
   createElementNS(namespaceURI, qualifiedName) {
@@ -191,6 +204,7 @@ class Document extends HTMLElement {
   createTextNode(text) {
     return {
       nodeType: 3,
+      ownerDocument: this,
       textContent: String(text),
       data: String(text),
       length: String(text).length
@@ -200,13 +214,16 @@ class Document extends HTMLElement {
   createComment(data) {
     return {
       nodeType: 8,
+      ownerDocument: this,
       data: String(data),
       textContent: String(data)
     };
   }
 
   createDocumentFragment() {
-    return new Element('#document-fragment');
+    const fragment = new Element('#document-fragment');
+    fragment._ownerDocument = this;
+    return fragment;
   }
 
   createEvent(type) {

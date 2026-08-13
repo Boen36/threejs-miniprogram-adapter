@@ -19,11 +19,11 @@
 - `src/index.js` — 主入口：`adaptForMiniProgram`（包装 canvas → 注入 polyfill → 能力探测延迟到 `inspectWebGL()`，避免在 `THREE.WebGLRenderer` 前锁定上下文属性）、`quickAdapt`、`checkCompatibility`、`waitForCanvas`。
 - `src/adaptor/` — 环境层：
   - `platform.js` — 统一读取微信平台信息：优先 `getWindowInfo`/`getDeviceInfo`/`getAppBaseInfo`，单次合并读取中信息缺失或异常时至多调用一次 `getSystemInfoSync` 补缺。
-  - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video/audio 是模拟实现，VideoTexture 默认不可用。
+  - `dom/` — 伪造的 DOM 树（Element/HTMLElement/canvas/document/window/image/video）。每个 `adaptForMiniProgram` 实例拥有独立 Document 和 Canvas 图片工厂；共享 `globalObject` 时按 adapter 栈激活/恢复全局 document/Image。canvas 的 `getContext('webgl')` 返回真实 WebGL1 上下文（基础库 <2.24.0 时），`recoverContext()` 用于 iOS 切后台后恢复；video/audio 是模拟实现，VideoTexture 默认不可用。
   - `events/` — Event/EventTarget、触摸→Pointer 转换（`pointer-event.js`）、WXML 触摸桥（`bridge.js`：只维护处理器表，不直赋原生对象 — 微信无"赋属性即事件"机制）。
   - `network/` — 基于 `wx.request` 的 fetch/XHR、Blob/File、手写 URL 解析；请求与 FileReader 用操作令牌隔离取消后的晚到回调，本地文件读取限沙箱（`file://`/`wxfile://`/`USER_DATA_PATH` 前缀，拒绝 `..`）。
   - `webgl/` — `WebGL2RenderingContextWrapper`（构造时快照原生上下文全部成员并代理，`constructor.name` 伪装为 WebGL2RenderingContext 供 three 判定，`_replaceContext` 支持热替换）、扩展与能力检测。
-- `src/plugins/loaders.js` — 绕过 three.js 图片路径、走 wx 图片层；`createFileLoader`/`resolvePath`/各 `enhance*Loader`。
+- `src/plugins/loaders.js` — 绕过 three.js 图片路径、走 wx 图片层；图片 helper 可传 `{ document: adapter.document }` 固定 Canvas 工厂；`createFileLoader`/`resolvePath`/各 `enhance*Loader`。
 - `src/plugins/draco-loader.js` — `MiniProgramDRACOLoader`：主线程 WASM 解码（不走 Worker），实现 GLTFLoader `setDRACOLoader` 所需的 `preload`/`decodeDracoFile`/`dispose` 契约；decoder 工厂与 WASM 由业务方注入。解码逻辑移植自 three DRACOLoader 的 Worker 实现。
 - `src/plugins/controls.js` — 真正有用的是 `createTouchControls`/`createGestureControls`；`adaptPointerLockControls`（补丁 lock/unlock 为警告）与 `adaptDeviceOrientationControls`（wx 设备运动桥，connect/disconnect 成对注册/注销）有真实行为。OrbitControls/Trackball 等靠触摸→Pointer 桥工作，无适配函数（2026-08 已删除空壳）。
 - `types/index.d.ts` — 公共类型。运行时导出与 .d.ts 必须同步（曾有漂移，已修复）。
@@ -44,6 +44,7 @@
 - `updateSize()` 只返回建议尺寸，不应用到 canvas/renderer（README 已声明）。
 - FileSystemManager 的异步读取无法从宿主层中止；`fetch` 收到 AbortSignal 后会立即拒绝，并忽略之后的 success/fail 回调。
 - `createObjectURL` 临时文件按 50 个 / 50MB LRU 回收；单个超限 Blob 在创建当次受保护，使用方仍需及时 `revokeObjectURL()`。
+- 多个 adapter 共用 `globalThis` 时只有栈顶实例的 document/Image 是全局当前值；后台并发创建图片需使用隔离的 `globalObject`，或向支持的 Loader helper 显式传入实例 document。
 - 尚未发布到 npm；README 安装说明目前用 GitHub 直装。
 - 发布前人工清单（未完成）：微信开发者工具、Android、iOS、基础渲染、OrbitControls、远程 GLB、本地 GLB、DRACO GLB、销毁重进页面。
 

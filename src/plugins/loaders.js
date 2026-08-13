@@ -5,10 +5,13 @@
 
 import { MiniProgramDRACOLoader } from './draco-loader.js';
 
-import { document } from '../adaptor/dom/document.js';
+import { document as fallbackDocument } from '../adaptor/dom/document.js';
 
-function createImageElement() {
-  return document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+function createImageElement(documentObject) {
+  const activeDocument = documentObject ||
+    (typeof globalThis !== 'undefined' ? globalThis.document : null) ||
+    fallbackDocument;
+  return activeDocument.createElementNS('http://www.w3.org/1999/xhtml', 'img');
 }
 
 /**
@@ -91,7 +94,7 @@ function resolvePath(url) {
  * 增强 TextureLoader
  * 添加小程序图片加载支持
  */
-function enhanceTextureLoader(THREE) {
+function enhanceTextureLoader(THREE, options = {}) {
   if (!THREE || !THREE.TextureLoader) {
     console.warn('THREE.TextureLoader not available');
     return;
@@ -105,7 +108,7 @@ function enhanceTextureLoader(THREE) {
     manager.itemStart(resolvedUrl);
 
     // 创建小程序图片
-    const image = createImageElement();
+    const image = createImageElement(options?.document);
     image.crossOrigin = 'anonymous';
 
     const texture = new THREE.Texture();
@@ -203,13 +206,13 @@ function enhanceFBXLoader(THREE) {
  * 应用所有 Loader 增强
  * @param {Object} THREE - three.js 实例
  */
-function enhanceAllLoaders(THREE) {
+function enhanceAllLoaders(THREE, options = {}) {
   if (!THREE) {
     console.warn('THREE is not available');
     return;
   }
 
-  enhanceTextureLoader(THREE);
+  enhanceTextureLoader(THREE, options);
   enhanceGLTFLoader(THREE);
   enhanceOBJLoader(THREE);
   enhanceMTLLoader(THREE);
@@ -281,13 +284,13 @@ function createCachedLoader(THREE, LoaderClass) {
  * 从 base64 加载纹理
  * 小程序中常用
  */
-function loadTextureFromBase64(THREE, base64Data, onLoad, onError) {
+function loadTextureFromBase64(THREE, base64Data, onLoad, onError, options = {}) {
   if (!THREE || !THREE.TextureLoader) {
     if (onError) onError(new Error('THREE not available'));
     return null;
   }
 
-  const image = createImageElement();
+  const image = createImageElement(options?.document);
   image.crossOrigin = 'anonymous';
 
   const texture = new THREE.Texture();
@@ -312,13 +315,13 @@ function loadTextureFromBase64(THREE, base64Data, onLoad, onError) {
  * @param {Object} THREE - three.js
  * @param {string} filePath - 本地文件路径（如 wxfile:// 或 file://）
  */
-function loadTextureFromFile(THREE, filePath, onLoad, onError) {
+function loadTextureFromFile(THREE, filePath, onLoad, onError, options = {}) {
   if (!THREE || !THREE.TextureLoader) {
     if (onError) onError(new Error('THREE not available'));
     return null;
   }
 
-  const image = createImageElement();
+  const image = createImageElement(options?.document);
   image.crossOrigin = 'anonymous';
 
   const texture = new THREE.Texture();
