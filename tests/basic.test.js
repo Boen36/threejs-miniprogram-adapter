@@ -109,6 +109,17 @@ describe('public API', () => {
     assert.doesNotThrow(() => installPolyfills(host));
     assert.equal(host.navigator, navigator);
   });
+
+  test('mirrors browser globals onto the installed window and self objects', () => {
+    const host = { WXWebAssembly: {} };
+    installPolyfills(host);
+
+    assert.equal(host.self, host.window);
+    for (const key of ['URL', 'URLSearchParams', 'Blob', 'fetch', 'Event', 'Image', 'WebAssembly']) {
+      assert.equal(host.window[key], host[key], `window.${key} should match the installed global`);
+      assert.equal(host.self[key], host[key], `self.${key} should match the installed global`);
+    }
+  });
 });
 
 describe('compatibility checks', () => {
@@ -171,6 +182,21 @@ describe('canvas adaptation', () => {
 
     assert.doesNotThrow(() => result.dispose());
     assert.equal(document.getElementById('test-canvas'), null);
+  });
+
+  test('inspects an existing WebGL1 context without requesting WebGL2', () => {
+    const { calls, canvas } = createMockCanvas();
+    const result = adaptForMiniProgram(canvas, { injectGlobals: false });
+    const context = result.canvas.getContext('webgl');
+    const contextCalls = calls.length;
+
+    const report = result.inspectWebGL();
+
+    assert.equal(context.isWebGL2, false);
+    assert.ok(report);
+    assert.equal(calls.length, contextCalls, 'inspection should reuse the renderer context');
+    assert.equal(result.webglReport, report);
+    result.dispose();
   });
 });
 

@@ -4,6 +4,8 @@
 
 > 项目状态：维护恢复中，API 仍属于实验阶段。当前已有 Node 自动化测试和 three.js 版本矩阵，但尚未完成微信开发者工具、iOS 与 Android 真机验证。请不要把“自动化通过”理解为“所有 three.js 功能均已支持”。
 
+当前迭代顺序、真机验收范围和首发条件见 [Roadmap](https://github.com/Boen36/threejs-miniprogram-adapter/blob/main/ROADMAP.md)。
+
 ## 当前能力
 
 | 能力 | 状态 | 验证范围 |

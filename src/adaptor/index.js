@@ -126,6 +126,27 @@ function installPolyfills(globalObject = globalThis, config = {}) {
   setDefault(globalObject, 'btoa', btoa);
   setDefault(globalObject, 'atob', atob);
 
+  // 浏览器中全局对象、window 与 self 暴露同一组 Web API。小程序通常没有
+  // 原生 window/self，若只把 polyfill 放到 globalThis，GLTFLoader 等 addon
+  // 通过 self.URL 或 window.URL 访问时仍会失败。保留宿主已有成员，只补缺失项。
+  const browserGlobalKeys = [
+    'document', 'Document', 'Element', 'HTMLElement', 'HTMLCanvasElement',
+    'HTMLImageElement', 'HTMLVideoElement', 'Image', 'CSSStyleDeclaration', 'DOMTokenList',
+    'EventTarget', 'Event', 'UIEvent', 'MouseEvent', 'Touch', 'TouchList', 'TouchEvent',
+    'KeyboardEvent', 'WheelEvent', 'PointerEvent',
+    'fetch', 'Request', 'Response', 'Headers', 'XMLHttpRequest', 'FormData', 'Blob', 'File',
+    'FileReader', 'DOMException', 'URL', 'URLSearchParams',
+    'AudioContext', 'Audio', 'HTMLAudioElement', 'WebGL2RenderingContext', 'WebAssembly',
+    'location', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame',
+    'btoa', 'atob'
+  ];
+  browserGlobalKeys.forEach(key => {
+    const value = globalObject[key];
+    if (value !== undefined && value !== null) {
+      setDefault(windowObject, key, value);
+    }
+  });
+
   if (options.debug) {
     console.log('[threejs-miniprogram-adapter] Polyfills installed successfully');
   }
