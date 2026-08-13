@@ -19,6 +19,13 @@
 
 .local-button {
   position: absolute;
-  left: 24rpx;
   bottom: 40rpx;
+}
+
+.model-button {
+  left: 24rpx;
+}
+
+.texture-button {
+  right: 24rpx;
 }

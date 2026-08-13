@@ -113,24 +113,18 @@ describe('adapter document ownership', () => {
     const second = createNativeCanvas('second');
     const firstAdapter = adaptForMiniProgram(first.canvas, { globalObject: {} });
     const secondAdapter = adaptForMiniProgram(second.canvas, { globalObject: {} });
-    const manager = {
-      itemStart() {},
-      itemEnd() {},
-      itemError() {}
-    };
     const THREE = {
-      DefaultLoadingManager: manager,
-      Texture: class {},
-      TextureLoader: class {
-        constructor() {
-          this.manager = manager;
-        }
-      }
+      Texture: class {}
     };
 
     try {
-      LoaderPlugins.enhanceTextureLoader(THREE, { document: firstAdapter.document });
-      new THREE.TextureLoader().load('first.png');
+      LoaderPlugins.loadTextureFromFile(
+        THREE,
+        'first.png',
+        undefined,
+        undefined,
+        { document: firstAdapter.document }
+      );
 
       assert.equal(first.images.length, 1);
       assert.equal(second.images.length, 0);
