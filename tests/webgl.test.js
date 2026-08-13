@@ -252,6 +252,28 @@ describe('context recovery', () => {
     assert.ok(currentGl.calls.some(call => call[0] === 'clear'));
   });
 
+  test('recoverContext reuses the original context attributes', () => {
+    let currentGl = makeGl('old');
+    const calls = [];
+    const native = {
+      getContext(type, attributes) {
+        calls.push({ type, attributes });
+        return currentGl;
+      }
+    };
+    const canvas = new HTMLCanvasElement(native);
+    canvas.getContext('webgl2', {
+      alpha: false,
+      antialias: true,
+      preserveDrawingBuffer: true
+    });
+
+    currentGl = makeGl('new');
+    assert.equal(canvas.recoverContext(), true);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1], calls[0]);
+  });
+
   test('recoverContext reports loss when the context cannot be recreated', () => {
     let destroyed = false;
     const native = {

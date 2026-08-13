@@ -12,6 +12,7 @@ class HTMLCanvasElement extends HTMLElement {
     super('canvas');
     this._canvas = canvas;
     this._context = null;
+    this._contextAttributes = null;
     this._width = 300;
     this._height = 150;
     this._rafId = 0;
@@ -83,7 +84,7 @@ class HTMLCanvasElement extends HTMLElement {
     this._contextType = contextType;
 
     // 构造传给原生 getContext 的属性（默认值与浏览器一致）
-    const requestContext = (type) => this._canvas.getContext(type, {
+    const normalizedContextAttributes = {
       alpha: contextAttributes?.alpha !== false,
       depth: contextAttributes?.depth !== false,
       stencil: contextAttributes?.stencil === true,
@@ -93,7 +94,8 @@ class HTMLCanvasElement extends HTMLElement {
       powerPreference: contextAttributes?.powerPreference || 'default',
       failIfMajorPerformanceCaveat: contextAttributes?.failIfMajorPerformanceCaveat === true,
       ...contextAttributes
-    });
+    };
+    const requestContext = (type) => this._canvas.getContext(type, normalizedContextAttributes);
 
     switch (contextType) {
       case 'webgl2': {
@@ -108,6 +110,7 @@ class HTMLCanvasElement extends HTMLElement {
           );
           return null;
         }
+        this._contextAttributes = { ...normalizedContextAttributes };
         this._context = new WebGL2RenderingContextWrapper(gl, this, true);
         return this._context;
       }
@@ -119,6 +122,7 @@ class HTMLCanvasElement extends HTMLElement {
           console.error('[threejs-miniprogram-adapter] Failed to get WebGL context');
           return null;
         }
+        this._contextAttributes = { ...normalizedContextAttributes };
         this._context = new WebGL2RenderingContextWrapper(gl, this, false);
         return this._context;
       }
@@ -237,7 +241,7 @@ class HTMLCanvasElement extends HTMLElement {
 
     let gl = null;
     try {
-      gl = this._canvas.getContext(this._contextType);
+      gl = this._canvas.getContext(this._contextType, this._contextAttributes || undefined);
     } catch {
       gl = null;
     }

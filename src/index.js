@@ -119,7 +119,10 @@ function adaptForMiniProgram(canvas, options = {}) {
   // lock its attributes before THREE.WebGLRenderer receives its own options.
   const inspectWebGL = () => {
     try {
-      const gl = adaptedCanvas.getContext('webgl2', config.webglContextAttributes);
+      // renderer 可能已在 three r160~r162 的回退链中创建 WebGL1；浏览器语义
+      // 禁止同一 canvas 再创建另一种 context，此时必须检查现有类型。
+      const contextType = adaptedCanvas._contextType === 'webgl' ? 'webgl' : 'webgl2';
+      const gl = adaptedCanvas.getContext(contextType, config.webglContextAttributes);
       if (gl) {
         const extensions = new WebGLExtensions(gl);
         const report = extensions.getReport();
